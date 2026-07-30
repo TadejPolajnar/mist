@@ -1,0 +1,19 @@
+---
+import { onLaunch } from 'mist'
+
+export const config = {
+  window: {
+    navigationBarTitleText: 'Mist',
+    navigationBarBackgroundColor: '#155dfc',
+    navigationBarTextStyle: 'white',
+  },
+}
+
+onLaunch(() => {
+  console.log('mist app launched')
+})
+---
+
+<style>
+page { background: #f9fafb; }
+</style>

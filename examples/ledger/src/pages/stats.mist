@@ -1,0 +1,48 @@
+---
+import { ledger } from '../stores/ledger.ts'
+import { derived } from 'mist'
+
+export const config = { navigationBarTitleText: 'Stats' }
+
+const total = derived(() => ledger.value.txs.reduce((s, t) => s + t.amount, 0))
+const count = derived(() => ledger.value.txs.length)
+const cats = derived(() => {
+  const colors = { Food: '#5ea0ff', Transit: '#34d399', Fun: '#c084fc', Other: '#f59e0b' }
+  const sums = {}
+  for (const t of ledger.value.txs) {
+    sums[t.cat] = (sums[t.cat] || 0) + t.amount
+  }
+  const total = ledger.value.txs.reduce((s, t) => s + t.amount, 0)
+  const out = []
+  for (const c in sums) {
+    out.push({ cat: c, amount: sums[c], pct: total > 0 ? Math.round((sums[c] / total) * 100) : 0, color: colors[c] || '#f59e0b' })
+  }
+  return out.sort((a, b) => b.amount - a.amount)
+})
+---
+<div class="p-4 flex flex-col gap-5">
+  <div class="card p-6 rounded-3xl flex justify-between items-center">
+    <div class="flex flex-col gap-1">
+      <span class="text-sm text-gray-500">Total spent</span>
+      <span class="text-2xl font-bold text-white">¥{total.value}</span>
+    </div>
+    <div class="flex flex-col gap-1 items-end">
+      <span class="text-sm text-gray-500">Expenses</span>
+      <span class="text-2xl font-bold text-white">{count.value}</span>
+    </div>
+  </div>
+  <span class="text-base font-bold text-white">By category</span>
+  <div class="card p-4 rounded-3xl flex flex-col gap-4">
+    {cats.value.map(c => (
+      <div key={c.cat} class="flex flex-col gap-2">
+        <div class="flex justify-between">
+          <span class="text-base text-white">{c.cat}</span>
+          <span class="text-sm text-gray-500">¥{c.amount} · {c.pct}%</span>
+        </div>
+        <div class="h-3 rounded-full bg-gray-800 w-full">
+          <div class="h-3 rounded-full" style="width: {{c.pct}}%; background: {{c.color}}"></div>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>

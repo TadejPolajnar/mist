@@ -1,0 +1,18 @@
+---
+import { props } from 'mist'
+
+const { tx, date } = props({ tx: null, date: '' })
+---
+<div class="card flex items-center gap-3 p-3 rounded-2xl">
+  <div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">
+    <span class="text-xl">{tx.icon}</span>
+  </div>
+  <div class="flex-1 flex flex-col">
+    <span class="text-base text-white font-medium">{tx.title}</span>
+    <span class="text-sm text-gray-500">{tx.cat} · {date}</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="text-base font-bold text-white">-¥{tx.amount}</span>
+    <span class="text-gray-600">›</span>
+  </div>
+</div>

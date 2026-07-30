@@ -1,0 +1,6 @@
+---
+import { props } from 'mist'
+
+const { count } = props({ count: 0 })
+---
+<span class="px-2 rounded-full bg-blue-500 text-white text-sm">{count}</span>

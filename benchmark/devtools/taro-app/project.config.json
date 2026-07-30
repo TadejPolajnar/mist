@@ -1,0 +1,11 @@
+{
+  "miniprogramRoot": "dist/",
+  "projectname": "taro-bench",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": false,
+    "urlCheck": false,
+    "minifyWXML": true
+  }
+}

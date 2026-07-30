@@ -1,0 +1,5 @@
+/target
+dist/
+node_modules/
+.swc/
+project.private.config.json

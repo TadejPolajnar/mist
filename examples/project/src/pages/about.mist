@@ -1,0 +1,19 @@
+---
+import { stats } from '../stores/stats.ts'
+import { state, onShow } from 'mist'
+
+export const config = { navigationBarTitleText: 'About' }
+
+const visits = state(0)
+
+onShow(() => {
+  visits.value++
+})
+---
+<div class="p-4 flex flex-col gap-4 items-center">
+  <span class="text-2xl font-bold text-blue-600">Mist</span>
+  <span class="text-base text-gray-500 text-center">Astro-flavored components compiled to native WeChat Mini Program code.</span>
+  <span class="text-sm text-gray-400">Shown {visits.value} time(s)</span>
+  <span class="text-sm text-gray-400">{stats.value.taps} taps on the other page (last: {stats.value.lastAction})</span>
+  <a href="/pages/index/index" class="text-blue-600" open-type="navigateBack">Back</a>
+</div>

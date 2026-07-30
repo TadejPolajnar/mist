@@ -1,0 +1,38 @@
+---
+import { ledger, removeTx } from '../stores/ledger.ts'
+import { state, derived, onLoad } from 'mist'
+
+export const config = { navigationBarTitleText: 'Expense' }
+
+const txId = state(0)
+
+const tx = derived(() => {
+  const found = ledger.value.txs.find(t => t.id === txId.value)
+  return found || { title: '?', amount: 0, cat: '?', icon: '🧾', ts: 0 }
+})
+
+function fmtFull(ts) {
+  const d = new Date(ts)
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()
+}
+
+function del() {
+  removeTx(txId.value)
+  wx.navigateBack()
+}
+
+onLoad(({ id }) => {
+  txId.value = Number(id)
+})
+---
+<div class="p-4 flex flex-col gap-5">
+  <div class="card p-8 rounded-3xl flex flex-col items-center gap-3">
+    <div class="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center">
+      <span class="text-3xl">{tx.value.icon}</span>
+    </div>
+    <span class="text-xl font-bold text-white">{tx.value.title}</span>
+    <span class="text-3xl font-bold text-white">-¥{tx.value.amount}</span>
+    <span class="text-sm text-gray-500">{tx.value.cat} · {fmtFull(tx.value.ts)}</span>
+  </div>
+  <button class="p-4 rounded-full card text-red-500 font-medium" onTap={del}>Delete expense</button>
+</div>

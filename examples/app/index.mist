@@ -1,0 +1,38 @@
+---
+import TodoItem from './TodoItem.mist'
+import Badge from './Badge.mist'
+import { state, derived } from 'mist'
+
+export const config = { navigationBarTitleText: 'Todos' }
+
+const filter = state('all')
+const todos = state([
+  { id: 1, title: 'Ship spec', done: false },
+  { id: 2, title: 'Build compiler', done: true },
+  { id: 3, title: 'Beat Taro', done: false },
+])
+
+const visible = derived(() =>
+  filter.value === 'all' ? todos.value : todos.value.filter(t => !t.done)
+)
+
+function toggle(id) {
+  const i = todos.value.findIndex(t => t.id === id)
+  todos.value[i].done = !todos.value[i].done
+}
+
+function switchFilter() {
+  filter.value = filter.value === 'all' ? 'open' : 'all'
+}
+---
+<div class="p-4 flex flex-col gap-2 bg-gray-50 h-full">
+  <div class="flex items-center gap-2">
+    <span class="text-2xl font-bold text-blue-600">Todos</span>
+    <Badge count={visible.value.length} />
+  </div>
+  {visible.value.map(t => (
+    <TodoItem key={t.id} todo={t} onToggle={toggle} />
+  ))}
+  {visible.value.length === 0 && <span class="text-gray-400">Nothing here</span>}
+  <button class="mt-2 rounded-full bg-blue-500 text-white" onTap={switchFilter}>Filter: {filter.value}</button>
+</div>

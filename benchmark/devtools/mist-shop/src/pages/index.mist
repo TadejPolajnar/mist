@@ -1,0 +1,50 @@
+---
+import ProductRow from '../components/ProductRow.mist'
+import CartBar from '../components/CartBar.mist'
+import { state, derived } from 'mist'
+
+export const config = { navigationBarTitleText: 'Mist shop' }
+
+const category = state('all')
+const products = state(
+  Array.from({ length: 100 }, (_, i) => ({
+    id: i + 1,
+    name: 'Product ' + (i + 1),
+    price: ((i % 9) + 1) * 10,
+    cat: ['a', 'b', 'c', 'd'][i % 4],
+  }))
+)
+const cart = state([])
+
+const visible = derived(() =>
+  category.value === 'all' ? products.value : products.value.filter(p => p.cat === category.value)
+)
+const count = derived(() => cart.value.reduce((s, c) => s + c.qty, 0))
+const total = derived(() => cart.value.reduce((s, c) => s + c.qty * c.price, 0))
+
+function add(id) {
+  const i = cart.value.findIndex(c => c.id === id)
+  if (i >= 0) {
+    cart.value[i].qty++
+  } else {
+    const p = products.value.find(p => p.id === id)
+    cart.value.push({ id: p.id, name: p.name, price: p.price, qty: 1 })
+  }
+}
+
+function switchCategory() {
+  category.value = category.value === 'all' ? 'b' : 'all'
+}
+---
+<div class="p-2">
+  <CartBar count={count.value} total={total.value} />
+  <button class="bench-filter" onTap={switchCategory}>Category: {category.value}</button>
+  {visible.value.map(p => (
+    <ProductRow key={p.id} product={p} onAdd={add} />
+  ))}
+  <div class="p-2">
+    {cart.value.map(c => (
+      <div key={c.id} class="text-sm text-gray-500">{c.name} × {c.qty}</div>
+    ))}
+  </div>
+</div>

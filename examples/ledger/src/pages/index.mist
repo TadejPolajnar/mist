@@ -1,0 +1,58 @@
+---
+import TxRow from '../components/TxRow.mist'
+import { ledger } from '../stores/ledger.ts'
+import { derived } from 'mist'
+
+export const config = { navigationBarTitleText: 'Ledger' }
+
+const spent = derived(() => ledger.value.txs.reduce((s, t) => s + t.amount, 0))
+const left = derived(() => ledger.value.budget - ledger.value.txs.reduce((s, t) => s + t.amount, 0))
+const pct = derived(() => {
+  const p = Math.round((ledger.value.txs.reduce((s, t) => s + t.amount, 0) / ledger.value.budget) * 100)
+  return p > 100 ? 100 : p
+})
+const recent = derived(() => ledger.value.txs.slice().reverse())
+
+function fmtDate(ts) {
+  const d = new Date(ts)
+  return (d.getMonth() + 1) + '/' + d.getDate()
+}
+
+function fmtMoney(v) {
+  return v.toLocaleString()
+}
+---
+<div class="p-4 flex flex-col gap-5">
+  <div class="flex flex-col gap-1">
+    <span class="text-sm text-gray-500">July 2026</span>
+    <span class="text-2xl font-bold text-white">Spending</span>
+  </div>
+  <div class="hero p-6 rounded-3xl flex flex-col gap-3">
+    <span class="text-sm text-blue-200">Spent this month</span>
+    <span class="text-3xl font-bold text-white">¥{fmtMoney(spent.value)}</span>
+    <div class="h-2 rounded-full bg-black/30 w-full">
+      <div class="h-2 rounded-full bg-white" style="width: {{pct}}%"></div>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-sm text-blue-200">¥{fmtMoney(left.value)} left</span>
+      <span class="text-sm text-blue-200">of ¥{fmtMoney(ledger.value.budget)}</span>
+    </div>
+  </div>
+  <div class="flex justify-between items-center">
+    <span class="text-base font-bold text-white">Recent</span>
+    <span class="text-sm text-gray-500">{recent.value.length} items</span>
+  </div>
+  {recent.value.length === 0 && (
+    <div class="card p-8 rounded-2xl flex flex-col items-center gap-2">
+      <span class="text-3xl">🌱</span>
+      <span class="text-sm text-gray-500">No expenses yet — add your first one</span>
+    </div>
+  )}
+  <div class="flex flex-col gap-2">
+    {recent.value.map(t => (
+      <a key={t.id} href="/pages/detail/detail?id={{t.id}}" hover-class="press-active" class="press">
+        <TxRow tx={t} date={fmtDate(t.ts)} />
+      </a>
+    ))}
+  </div>
+</div>

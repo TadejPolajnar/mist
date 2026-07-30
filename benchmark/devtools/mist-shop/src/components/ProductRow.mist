@@ -1,0 +1,9 @@
+---
+import { props } from 'mist'
+
+const { product, onAdd } = props({ product: null })
+---
+<div class="bench-row py-1 flex justify-between" onTap={() => onAdd(product.id)}>
+  <span>{product.name}</span>
+  <span class="text-gray-400">¥{product.price}</span>
+</div>

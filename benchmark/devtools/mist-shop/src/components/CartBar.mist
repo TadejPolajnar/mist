@@ -1,0 +1,9 @@
+---
+import { props } from 'mist'
+
+const { count, total } = props({ count: 0, total: 0 })
+---
+<div class="flex justify-between p-2 bg-gray-50">
+  <span class="font-bold">Cart: {count} items</span>
+  <span class="text-blue-600">¥{total}</span>
+</div>

@@ -1,0 +1,9 @@
+---
+import { onLaunch } from 'mist'
+
+export const config = {
+  window: { navigationBarTitleText: 'Mist bench' },
+}
+
+onLaunch(() => {})
+---

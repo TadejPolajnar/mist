@@ -1,0 +1,8 @@
+---
+import { props } from 'mist'
+
+const { todo, onToggle } = props({ todo: null })
+---
+<div class="py-2 px-3 bg-white rounded-lg border border-gray-200" onTap={() => onToggle(todo.id)}>
+  <span class={todo.done ? 'text-base line-through text-gray-400' : 'text-base'}>{todo.title}</span>
+</div>

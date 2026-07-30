@@ -1,0 +1,55 @@
+---
+import { ledger, addTx } from '../stores/ledger.ts'
+import { state, derived } from 'mist'
+
+export const config = { navigationBarTitleText: 'Add expense' }
+
+const title = state('')
+const amount = state('')
+const cat = state('Food')
+
+const valid = derived(() => title.value.length > 0 && Number(amount.value) > 0)
+
+function pick(c) {
+  cat.value = c
+}
+
+function icon(c) {
+  if (c === 'Food') return '🍜'
+  if (c === 'Transit') return '🚇'
+  if (c === 'Fun') return '🎮'
+  return '🧾'
+}
+
+function save() {
+  if (!(title.value.length > 0 && Number(amount.value) > 0)) return
+  addTx(title.value, Number(amount.value), cat.value, icon(cat.value), Date.now())
+  title.value = ''
+  amount.value = ''
+  wx.switchTab({ url: '/pages/index/index' })
+}
+---
+<div class="p-4 flex flex-col gap-5">
+  <div class="card p-6 rounded-3xl flex flex-col items-center gap-2">
+    <span class="text-sm text-gray-500">Amount</span>
+    <input class="text-4xl font-bold text-white text-center w-full" type="digit" value:bind={amount} placeholder="¥0" placeholder-class="ph" />
+  </div>
+  <div class="flex flex-col gap-2">
+    <span class="text-sm text-gray-500">What was it?</span>
+    <input class="card p-4 rounded-2xl text-base text-white" value:bind={title} placeholder="Lunch, taxi, cinema..." placeholder-class="ph" />
+  </div>
+  <div class="flex flex-col gap-2">
+    <span class="text-sm text-gray-500">Category</span>
+    <div class="flex gap-2">
+      <button class={cat.value === 'Food' ? 'bench-pill flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'bench-pill flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Food')}>🍜 Food</button>
+      <button class={cat.value === 'Transit' ? 'bench-pill flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'bench-pill flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Transit')}>🚇 Transit</button>
+      <button class={cat.value === 'Fun' ? 'bench-pill flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'bench-pill flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Fun')}>🎮 Fun</button>
+    </div>
+  </div>
+  <button class={valid.value ? 'p-4 rounded-full bg-blue-600 text-white font-bold' : 'p-4 rounded-full card text-gray-600 font-bold'} onTap={save}>Add expense</button>
+</div>
+
+<style>
+.ph { color: #4b5563; }
+input { caret-color: #5ea0ff; }
+</style>
