@@ -1,0 +1,34 @@
+---
+import { props } from 'mist'
+
+const { card, onUp, onDown, onLeft, onRight, onOpen } = props({
+  card: { id: 0, title: '', tag: '', who: '', first: true, last: true, canLeft: false, canRight: false },
+})
+---
+<div class="rounded-lg bg-white px-3 py-2.5 mb-2">
+  <div onTap={() => onOpen(card.id)} hover-class="pressed">
+    <span class="block text-body text-ink">{card.title}</span>
+    <div class="flex items-center justify-between mt-1.5">
+      <span class="text-caption text-mute">{card.tag}</span>
+      <span class="text-caption text-faint">{card.who}</span>
+    </div>
+  </div>
+  <div class="flex items-center justify-between mt-2 pt-2 border-t border-tile">
+    <div class="flex gap-1.5">
+      <div onTap={() => onLeft(card.id)} hover-class="pressed" class:list={['w-7 h-6 rounded flex items-center justify-center bg-page', { 'opacity-30': !card.canLeft }]}>
+        <span class="text-caption text-mute">◀</span>
+      </div>
+      <div onTap={() => onRight(card.id)} hover-class="pressed" class:list={['w-7 h-6 rounded flex items-center justify-center bg-page', { 'opacity-30': !card.canRight }]}>
+        <span class="text-caption text-mute">▶</span>
+      </div>
+    </div>
+    <div class="flex gap-1.5">
+      <div onTap={() => onUp(card.id)} hover-class="pressed" class:list={['w-7 h-6 rounded flex items-center justify-center bg-page', { 'opacity-30': card.first }]}>
+        <span class="text-caption text-mute">▲</span>
+      </div>
+      <div onTap={() => onDown(card.id)} hover-class="pressed" class:list={['w-7 h-6 rounded flex items-center justify-center bg-page', { 'opacity-30': card.last }]}>
+        <span class="text-caption text-mute">▼</span>
+      </div>
+    </div>
+  </div>
+</div>

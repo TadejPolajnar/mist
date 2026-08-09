@@ -1,0 +1,15 @@
+---
+import { props } from 'mist'
+
+const { group, onPick } = props({ group: null })
+---
+<div class="flex flex-col gap-2 px-4 py-3 bg-white border-b border-hairline">
+  <span class="text-body text-mute">{group.name}</span>
+  <div class="flex flex-wrap gap-2">
+    {group.choices.map(c => (
+      <div key={c.id} class:list={['px-3 py-1.5 rounded-full border text-body', { 'bg-primary/10 text-primary border-primary': c.picked }, { 'bg-white text-ink border-line': !c.picked }]} hover-class="pressed" onTap={() => onPick(group.id, c.id)}>
+        <span>{c.label}</span>
+      </div>
+    ))}
+  </div>
+</div>

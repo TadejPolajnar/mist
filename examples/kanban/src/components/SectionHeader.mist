@@ -1,0 +1,6 @@
+---
+import { props } from 'mist'
+
+const { title } = props({ title: '' })
+---
+<span class="block text-caption text-faint uppercase px-4 pt-4 pb-2">{title}</span>

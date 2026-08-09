@@ -1,0 +1,166 @@
+---
+import SectionHeader from '../components/SectionHeader.mist'
+import Tag from '../components/Tag.mist'
+import { cart } from '../stores/cart.ts'
+import { orders } from '../stores/orders.ts'
+import { setCat } from '../stores/ui.ts'
+import { state, derived, onShareAppMessage } from 'mist'
+
+export const config = { navigationBarTitleText: '雾茶 MistTea' }
+
+const hour = state(new Date().getHours())
+
+function greetingFor(h) {
+  if (h >= 5 && h < 11) {
+    return '早上好 ☀️'
+  }
+  if (h >= 11 && h < 14) {
+    return '午安 🍵'
+  }
+  if (h >= 14 && h < 18) {
+    return '下午好 ☀️'
+  }
+  return '晚上好 🌙'
+}
+
+const greeting = derived(() => greetingFor(hour.value))
+const isOpen = derived(() => hour.value >= 9 && hour.value < 22)
+
+const cartInfo = derived(() => {
+  if (cart.value.lines.length === 0) {
+    return null
+  }
+  const count = cart.value.lines.reduce((s, l) => s + l.qty, 0)
+  const total = cart.value.lines.reduce((s, l) => s + l.unit * l.qty, 0)
+  return { count, totalStr: '¥' + total, emoji: cart.value.lines[0].emoji }
+})
+
+const making = derived(() => {
+  const found = orders.value.list.slice().reverse().find(o => o.status === 'making')
+  if (!found) {
+    return null
+  }
+  return { order: found.order }
+})
+
+const TILES = [
+  { id: 'tea', name: '奶茶', emoji: '🧋', bg: 'bg-tile-tea' },
+  { id: 'fruit', name: '果茶', emoji: '🍓', bg: 'bg-tile-fruit' },
+  { id: 'coffee', name: '咖啡', emoji: '☕', bg: 'bg-tile-coffee' },
+  { id: 'snack', name: '小食', emoji: '🍟', bg: 'bg-tile-snack' },
+]
+
+const PICKS = [
+  { id: 'sig-boba', name: '招牌珍珠奶茶', emoji: '🧋', price: 15 },
+  { id: 'grape', name: '多肉葡萄', emoji: '🍇', price: 19 },
+  { id: 'latte', name: '生椰拿铁', emoji: '🥥', price: 18 },
+  { id: 'lemon', name: '手打柠檬茶', emoji: '🍋', price: 12 },
+]
+
+function goCat(id) {
+  setCat(id)
+  wx.switchTab({ url: '/pages/menu/menu' })
+}
+
+onShareAppMessage(() => ({ title: '雾茶 MistTea — 一杯好茶', path: '/pages/index/index' }))
+---
+<div class="flex flex-col min-h-screen bg-page">
+  <div class="px-5 pt-4">
+    <span class="block text-stat text-ink font-semibold">{greeting.value}</span>
+    <span class="block text-caption text-faint mt-1">雾茶 · 每一杯都现做</span>
+  </div>
+
+  <swiper class="h-40" autoplay circular indicator-dots indicator-active-color="#07c160">
+    <swiper-item>
+      <div style="background: linear-gradient(135deg, #07c160, #059048)" class="h-full mx-4 mt-3 rounded-xl flex items-center justify-between px-5">
+        <div class="flex flex-col">
+          <span class="text-caption text-white/80">新品上市</span>
+          <span class="text-stat text-white font-semibold mt-1">黑糖珍珠奶茶</span>
+          <span class="text-caption text-white/80 mt-1">黑糖现熬 · 珍珠现煮</span>
+        </div>
+        <span class="text-emoji-lg">🧋</span>
+      </div>
+    </swiper-item>
+    <swiper-item>
+      <div style="background: linear-gradient(135deg, #ff9d2e, #f76b1c)" class="h-full mx-4 mt-3 rounded-xl flex items-center justify-between px-5">
+        <div class="flex flex-col">
+          <span class="text-caption text-white/80">限时特惠</span>
+          <span class="text-stat text-white font-semibold mt-1">果茶第二杯半价</span>
+          <span class="text-caption text-white/80 mt-1">鲜果现剥 · 每日限量</span>
+        </div>
+        <span class="text-emoji-lg">🍓</span>
+      </div>
+    </swiper-item>
+    <swiper-item>
+      <div style="background: linear-gradient(135deg, #6b5844, #3f3226)" class="h-full mx-4 mt-3 rounded-xl flex items-center justify-between px-5">
+        <div class="flex flex-col">
+          <span class="text-caption text-white/80">咖啡时刻</span>
+          <span class="text-stat text-white font-semibold mt-1">生椰拿铁 限时 ¥18</span>
+          <span class="text-caption text-white/80 mt-1">厚椰乳 · 双份浓缩</span>
+        </div>
+        <span class="text-emoji-lg">🥥</span>
+      </div>
+    </swiper-item>
+  </swiper>
+
+  <SectionHeader title="快速点单" />
+  <div class="flex bg-white mx-4 rounded-lg">
+    {TILES.map(t => (
+      <div key={t.id} onTap={() => goCat(t.id)} hover-class="pressed" class="flex-1 flex flex-col items-center py-4">
+        <div class:list={['w-12 h-12 rounded-xl flex items-center justify-center', t.bg]}>
+          <span class="text-2xl">{t.emoji}</span>
+        </div>
+        <span class="text-body text-ink mt-1.5">{t.name}</span>
+      </div>
+    ))}
+  </div>
+
+  <SectionHeader title="人气招牌" />
+  <scroll-view scroll-x class="whitespace-nowrap">
+    <div class="flex gap-3 px-4">
+      {PICKS.map(p => (
+        <a key={p.id} href={'/pages/item/item?id=' + p.id} hover-class="pressed" class="block w-28 shrink-0 rounded-xl bg-white px-3 py-3">
+          <span class="block text-4xl text-center">{p.emoji}</span>
+          <span class="block text-body text-ink text-center mt-1">{p.name}</span>
+          <span class="block text-body text-danger font-semibold text-center mt-0.5">¥{p.price}</span>
+        </a>
+      ))}
+    </div>
+  </scroll-view>
+
+  <SectionHeader title="门店" />
+  <div class="mx-4 rounded-xl bg-white px-4 py-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-cell text-ink font-semibold">雾茶 · 望京店</span>
+        <Tag text={isOpen.value ? '营业中' : '已打烊'} tone={isOpen.value ? 'ok' : 'mute'} />
+      </div>
+      <span class="text-body text-faint">›</span>
+    </div>
+    <span class="block text-caption text-mute mt-1">09:00–22:00 · 距你 500m</span>
+  </div>
+
+  {cartInfo.value && (
+    <a href="/pages/cart/cart" open-type="switchTab" hover-class="pressed" class="block mx-4 mt-3 rounded-xl bg-primary/10 px-4 py-3">
+      <div class="flex items-center justify-between">
+        <span class="text-body text-primary">{cartInfo.value.emoji} 购物车有 {cartInfo.value.count} 件 · {cartInfo.value.totalStr}</span>
+        <span class="text-body text-primary">去结算 ›</span>
+      </div>
+    </a>
+  )}
+
+  {making.value && (
+    <a href="/pages/orders/orders" open-type="switchTab" hover-class="pressed" class="block mx-4 mt-3 rounded-xl bg-white px-4 py-3">
+      <div class="flex items-center justify-between">
+        <span class="text-body text-ink">☕ 订单 #{making.value.order} 制作中</span>
+        <span class="text-body text-mute">查看 ›</span>
+      </div>
+    </a>
+  )}
+
+  <div class="mx-4 mt-6 pb-safe">
+    <a href="/pages/menu/menu" open-type="switchTab" hover-class="pressed" class="block rounded-full bg-primary py-3 text-center shadow-cta">
+      <span class="text-cell text-white font-semibold">去点单</span>
+    </a>
+  </div>
+</div>

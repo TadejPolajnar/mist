@@ -176,7 +176,7 @@ HTML-like, but a strict dialect parsed by the compiler — not HTML.
 | Authored | Emitted | Notes |
 |---|---|---|
 | `div`, `section`, `header`, `footer`, `ul`, `li`, `p`, `h1–h6`, … (all block elements) | `view` | headings get default type-scale classes (removable) |
-| `span`, bare text runs | `text` | **`text` may contain only text/`span` children — compile error otherwise** (native `text` is inline-only and ignores box styling) |
+| `span`, bare text runs | `text` | **`text` may contain only text/`span` children — M1018 compile warning otherwise, may harden to an error later** (native `text` is inline-only and ignores box styling) |
 | `img` | `image` | `mode` passthrough |
 | `button`, `input`, `textarea`, `form`, `label` | same-named native components | |
 | `a href="/pages/x/x"` | `navigator url="…"` | |
@@ -254,8 +254,12 @@ const { todo, onToggle } = props<{ todo: Todo; onToggle: (id: number) => void }>
 ```
 
 - **Props → `properties`.** WeChat property types are String/Number/Boolean/Object/Array/
-  null only; the compiler maps TS types onto them (unions of literals → String/Number
-  with a runtime dev-mode validator; interfaces → Object). Defaults via
+  null only; the compiler maps the `props<T>()` type argument onto them — shipped:
+  `string`/`number`/`boolean` and their literal-union forms, `T[]`/tuples → Array,
+  object type literals and type references (interfaces, `Record<…>`) → Object; mixed
+  unions and unresolvable/generic types fall back to `type: null`. Type-alias references
+  to a primitive (e.g. `type Id = number`) also map to Object, not Number — the compiler
+  cannot resolve aliases. Not shipped: a runtime dev-mode validator. Defaults via
   `props<T>({ done: false })`. Non-serializable prop values are compile errors —
   **except** `onXxx`-named function props.
 - **Callback props** compile to component events. Wire format: child calls
@@ -302,8 +306,11 @@ const { todo, onToggle } = props<{ todo: Todo; onToggle: (id: number) => void }>
   `wx.navigateTo`, typed route table generated from `pages/`. Also `navigate.replace`,
   `.back`, `.switchTab`. Page-stack depth (10) exceeded → dev-mode warning.
 - `wx.*` is not wrapped (non-goal). Types come from **`miniprogram-api-typings`**
-  (official, maintained), re-exported via `mist/wx` with thin patches where Mist's event
-  compiler narrows types.
+  (official, maintained) as an ambient global: `mistc init` scaffolds it as a
+  devDependency and adds it to the tsconfig `types` array, so `wx.*` is typed
+  after `npm install`. There is no `mist/wx` module — the import guard admits
+  only `mist`, relative store modules, and `.mist` components (decided:
+  ambient global over re-export, §14).
 
 ## 8. Compiler-level optimizations (the performance thesis)
 
@@ -383,7 +390,7 @@ polish: `M1001` aliased state mutation, `M1002` unsupported Tailwind utility,
 - Full React/JSX semantics, hooks, context. (The constraint *is* the product.)
 - Runtime-dynamic component trees, portals, scoped slots, slot fallbacks.
 - CSS-in-JS.
-- Cross-platform output (emitter abstracted internally; WeChat-only).
+- Cross-platform output — WeChat-only by design (no internal emitter abstraction exists; the performance thesis is built on WeChat's setData cost model).
 - Skyline renderer (config key reserved).
 - Build-time data/SSR — all data is runtime.
 
@@ -397,4 +404,8 @@ polish: `M1001` aliased state mutation, `M1002` unsupported Tailwind utility,
    common case.
 4. **Hoisted expressions are nameable/visible** — deterministic source-derived names,
    because runtime debugging happens in generated code (§9).
-5. **`wx.*` types: `miniprogram-api-typings`** re-exported, thin local patches only.
+5. **`wx.*` types: `miniprogram-api-typings` as ambient global, not re-exported** —
+   `mistc init` scaffolds it as a devDependency and tsconfig `types` entry;
+   no `mist/wx` module exists, since the import guard only admits `mist`,
+   stores, and components, and that strictness is load-bearing for the
+   static-analysis thesis (§7).

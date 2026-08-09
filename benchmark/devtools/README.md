@@ -27,22 +27,20 @@ npm run measure:mist          # or: TOGGLES=100 node measure.js mist-app
 Output: JSON report — `setDataCalls`, `setDataBytes`, `bytesPerToggle`,
 `maxPayloadBytes`, `msPerToggle`, `packageBytes`, launch/first-render entries.
 
-## The Taro twin
-
-`taro-app/` is committed and ready — a hand-rolled Taro 3.6.35 + React 18 project
-(webpack pinned to exactly 5.78.0; newer webpack rejects Taro's ProgressPlugin
-options). Do **not** run `taro init` over it; that would clobber the pinned setup.
+## Build the Taro twin
 
 ```sh
-cd benchmark/devtools/taro-app
-npm install && npm run build:weapp
+cd benchmark/devtools
+npx @tarojs/cli init taro-app     # pick: React, JavaScript, default template
+cp taro-src/index.jsx taro-app/src/pages/index/index.jsx
+cd taro-app && npm install && npm run build:weapp
+# point taro-app/project.config.json miniprogramRoot at dist/ if it isn't already
 cd .. && npm run measure:taro
 ```
 
-Its ledger pages (`src/pages/l*`) mirror `examples/ledger` feature-for-feature, and
-`src/pages/index.jsx` / `shop.jsx` are the list and shop benchmarks. Taro is
-MIT-licensed, © NervJS — nothing of Taro's is vendored here, only app code written
-against it for comparison.
+`taro-src/index.jsx` is the equivalent page: same 1000-row list, same toggle and
+filter semantics, `.bench-row` tap targets so `measure.js` drives both apps with
+the same selector.
 
 ## Measured head-to-head (real DevTools — 2026-07-29)
 
@@ -71,7 +69,7 @@ lib 3.17.0 (EVAL.md's ledger runs used lib 3.16.2 — different sessions). Taro 
 | filter switch bytes | **1.3 KB** | 14.2 KB | **11× smaller** |
 | package size | **11.6 KB** | 294.9 KB | 25× smaller |
 
-`26 B` on the list app is hand-written setData parity — the result of dead-data
+`26 B` on the list app is within a small constant of the hand-written setData floor — the result of dead-data
 elimination (unbound `todos` lives as an instance field, so a toggle sends only
 the derived `visible[i].done`). The shop numbers show the pattern generalizes:
 payload advantages grow with data complexity (11× on structural changes), while
@@ -104,7 +102,41 @@ Honest read:
 Reproduce: the Taro twin in `taro-app/` is hand-rolled (pinned Taro 3.6.35,
 webpack pinned to exactly 5.78.0 — newer webpack rejects Taro's ProgressPlugin
 options). `npm install && npm run build:weapp` in `taro-app/`, then
-`npm run measure:taro`.
+`npm run measure:taro`. Note: the Taro project now boots into the ledger page
+added for EVAL.md, so the list benchmark needs
+`PAGE=/pages/index/index node measure.js taro-app`.
+
+## Re-measured 2026-08-08 (post correctness campaign)
+
+Three-way, all measured the same day / machine / session / instrument: mist at
+the pre-campaign commit (`6e55494`, rebuilt from source and re-measured — not
+the July recording), mist at `654c2a9` (M1001–M1010 diagnostics, per-derived
+dirty bits, transactional setData rollback, prop rewriting, TS stripping), and
+the same Taro twin. 1000 rows, 50 toggles:
+
+| metric | mist pre-campaign | mist today | Taro 3 + React |
+|---|---|---|---|
+| ms per toggle (avg) | 71.9 | 72.9–77.3 (two runs) | 153 |
+| setData calls per tap | 1 | 1 | 1 |
+| bytes per toggle | **26 B** | **26 B** | 67 B |
+| max single payload | 27 B | 27 B | 83 B |
+| initial data payload | 49,498 B | 49,498 B | 140,516 B |
+| package size (raw) | 8.4 KB | 10.7 KB | 309.8 KB |
+| package size (gzipped, per-file sum) | — | 4.3 KB | 86.9 KB |
+
+Reading: the campaign moved bridge traffic by **zero bytes** and held toggle
+latency flat on this app — expected, since the list page has one derived whose
+dependency changes on every tap, so dirty bits have nothing to skip. The
+runtime additions (rollback + deps arrays + manifest) cost ~2.3 KB of package.
+Where mist-today beats mist-pre-campaign is multi-derived pages: in the Node
+harness on the ledger-stats shape (8 deriveds, three full-list reduces),
+hoisted deriveds went from recomputing every flush to 234 µs → 0.3 µs when
+clean at 1000 rows. Measuring that on-device needs a stats-heavy app with
+committed source (`mist-pill/` still ships dist only). Taro's package grew
+vs the July row because its dist accumulated the EVAL.md ledger pages.
+Fairness note: mist's dist is unminified compiler output; Taro's is a
+production (minified) webpack build — mist's raw number is therefore the
+conservative one, and gzip narrows nothing in Taro's favour (20× compressed).
 
 ## Comparing
 
@@ -115,7 +147,7 @@ Run both with the same `TOGGLES`, and compare:
   per toggle for mist)
 - `msPerToggle` — end-to-end scripted tap latency (includes render)
 - `launch` entries — `appLaunch`, `evaluateScript`, `firstRender`
-- `packageBytes` — shipped code size (mist runtime is ~6 KB; Taro ships its
+- `packageBytes` — shipped code size (mist runtime is ~9 KB; Taro ships its
   React runtime + DOM shim)
 
 Caveats: DevTools timings are not phone timings (use real-device debugging for

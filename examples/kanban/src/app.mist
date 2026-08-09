@@ -1,0 +1,45 @@
+---
+import { onLaunch, onError, onUnhandledRejection, onThemeChange } from 'mist'
+
+export const config = {
+  entryPagePath: 'pages/board/board',
+  window: {
+    navigationBarTitleText: '雾板 MistBoard',
+    navigationBarBackgroundColor: '#ffffff',
+    navigationBarTextStyle: 'black',
+    backgroundColor: '#f7f7f7',
+  },
+  tabBar: {
+    color: '#888888',
+    selectedColor: '#07c160',
+    backgroundColor: '#ffffff',
+    borderStyle: 'black',
+    list: [
+      { pagePath: 'pages/board/board', text: '看板', iconPath: 'assets/icons/board.png', selectedIconPath: 'assets/icons/board.png' },
+      { pagePath: 'pages/backlog/backlog', text: '待办池', iconPath: 'assets/icons/backlog.png', selectedIconPath: 'assets/icons/backlog.png' },
+      { pagePath: 'pages/team/team', text: '团队', iconPath: 'assets/icons/team.png', selectedIconPath: 'assets/icons/team.png' },
+    ],
+  },
+}
+
+onLaunch(() => {
+  console.log('mist-board launched')
+})
+
+onError((error) => {
+  console.error('mist-board error:', error)
+})
+
+onUnhandledRejection((e) => {
+  console.error('mist-board unhandled rejection:', e.reason)
+})
+
+onThemeChange((e) => {
+  console.log('mist-board theme:', e.theme)
+})
+---
+
+<style>
+page { background: #f7f7f7; }
+.pressed { opacity: 0.6; }
+</style>

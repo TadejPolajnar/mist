@@ -1,4 +1,4 @@
-use mistc::tailwind::sanitize;
+use mistc::tailwind::{harvest_style_classes, sanitize};
 
 fn page(template: &str) -> String {
     format!("---\nimport {{ state }} from 'mist'\nconst n = state(0)\n---\n{}\n", template)
@@ -43,4 +43,49 @@ fn project_collects_shared_css_across_units() {
     assert!(project.tailwind_css.contains(".line-through"), "css:\n{}", project.tailwind_css);
     assert!(project.unknown_classes.is_empty(), "unknown: {:?}", project.unknown_classes);
     assert!(project.dropped_selectors.is_empty(), "dropped: {:?}", project.dropped_selectors);
+}
+
+#[test]
+fn harvest_style_classes_finds_selectors_and_skips_decimals() {
+    let css = ".card { border-radius: 8px; } .press:hover, .hero > .inner { opacity: 0.5; width: calc(100% - 0.5px); }";
+    let mut classes = harvest_style_classes(css);
+    classes.sort();
+    assert_eq!(classes, vec!["card", "hero", "inner", "press"]);
+}
+
+#[test]
+fn harvest_style_classes_ignores_declaration_bodies() {
+    let css = ".card { background: url(.foo.png); }";
+    let classes = harvest_style_classes(css);
+    assert_eq!(classes, vec!["card"]);
+}
+
+#[test]
+fn harvest_style_classes_scans_inside_media_query() {
+    let css = "@media (min-width: 750px) { .x { color: red; } }";
+    let classes = harvest_style_classes(css);
+    assert_eq!(classes, vec!["x"]);
+}
+
+#[test]
+fn harvest_style_classes_ignores_keyframes_frames() {
+    let css = "@keyframes spin { 0% { opacity: 0; } from { opacity: 1; } to { opacity: 0; } }";
+    let classes = harvest_style_classes(css);
+    assert!(classes.is_empty(), "classes: {:?}", classes);
+}
+
+#[test]
+fn harvest_style_classes_ignores_commented_selectors() {
+    let css = "/* .fake { color: red; } */ .real { color: blue; }";
+    let classes = harvest_style_classes(css);
+    assert_eq!(classes, vec!["real"]);
+}
+
+#[test]
+fn harvest_style_classes_finds_both_in_compound_selector() {
+    let css = ".a.b { color: red; } .a.b:hover { color: blue; }";
+    let mut classes = harvest_style_classes(css);
+    classes.sort();
+    classes.dedup();
+    assert_eq!(classes, vec!["a", "b"]);
 }

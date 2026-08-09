@@ -1,0 +1,84 @@
+---
+import MenuItem from '../components/MenuItem.mist'
+import { state, derived, onShow } from 'mist'
+import { ui } from '../stores/ui.ts'
+import { cart } from '../stores/cart.ts'
+
+export const config = { navigationBarTitleText: '点单' }
+
+const CATS = [
+  { id: 'tea', name: '奶茶', emoji: '🧋' },
+  { id: 'fruit', name: '果茶', emoji: '🍓' },
+  { id: 'coffee', name: '咖啡', emoji: '☕' },
+  { id: 'snack', name: '小食', emoji: '🍟' },
+]
+
+const MENU = [
+  { id: 'sig-boba', cat: 'tea', name: '招牌珍珠奶茶', emoji: '🧋', desc: '黑糖珍珠 · 现煮', price: 15, opts: true },
+  { id: 'brown-sugar', cat: 'tea', name: '黑糖鲜奶', emoji: '🥛', desc: '虎纹挂壁', price: 17, opts: true },
+  { id: 'oolong-milk', cat: 'tea', name: '乌龙轻乳茶', emoji: '🍵', desc: '清爽不腻', price: 14, opts: true },
+  { id: 'cheese-jasmine', cat: 'tea', name: '芝士茉莉', emoji: '🧀', desc: '咸香芝士盖', price: 16, opts: true },
+  { id: 'grape', cat: 'fruit', name: '多肉葡萄', emoji: '🍇', desc: '整颗夏黑', price: 19, opts: true },
+  { id: 'strawberry', cat: 'fruit', name: '芝士草莓', emoji: '🍓', desc: '当季鲜果', price: 20, opts: true },
+  { id: 'lemon', cat: 'fruit', name: '手打柠檬茶', emoji: '🍋', desc: '暴打香水柠檬', price: 12, opts: true },
+  { id: 'mango', cat: 'fruit', name: '杨枝甘露', emoji: '🥭', desc: '西柚粒粒', price: 18, opts: true },
+  { id: 'latte', cat: 'coffee', name: '生椰拿铁', emoji: '🥥', desc: '厚椰乳', price: 18, opts: true },
+  { id: 'americano', cat: 'coffee', name: '冰美式', emoji: '🧊', desc: 'SOE 豆', price: 12, opts: true },
+  { id: 'mocha', cat: 'coffee', name: '燕麦摩卡', emoji: '🍫', desc: '比利时可可', price: 19, opts: true },
+  { id: 'flatwhite', cat: 'coffee', name: '澳白', emoji: '☕', desc: '双份浓缩', price: 16, opts: true },
+  { id: 'fries', cat: 'snack', name: '脆薯条', emoji: '🍟', desc: '现炸 · 大份', price: 9, opts: false },
+  { id: 'eggwaffle', cat: 'snack', name: '鸡蛋仔', emoji: '🧇', desc: '港式原味', price: 12, opts: false },
+  { id: 'toast', cat: 'snack', name: '厚切吐司', emoji: '🍞', desc: '黄油蜂蜜', price: 10, opts: false },
+  { id: 'pudding', cat: 'snack', name: '布丁', emoji: '🍮', desc: '焦糖鸡蛋', price: 6, opts: false },
+]
+
+const cat = state('tea')
+const visible = derived(() => MENU.filter(m => m.cat === cat.value).map(m => ({ id: m.id, name: m.name, emoji: m.emoji, desc: m.desc, price: m.price, soldStr: '月售 ' + (m.price * 13 + 8) })))
+const cartCount = derived(() => cart.value.lines.reduce((s, l) => s + l.qty, 0))
+const cartTotal = derived(() => cart.value.lines.reduce((s, l) => s + l.unit * l.qty, 0))
+
+function switchCategory(id) {
+  cat.value = id
+}
+
+function goCart() {
+  wx.switchTab({ url: '/pages/cart/cart' })
+}
+
+onShow(() => {
+  if (ui.value.cat !== '') {
+    cat.value = ui.value.cat
+    ui.value.cat = ''
+  }
+})
+---
+<div class="relative h-screen">
+  <div class="flex h-screen bg-page">
+    <div class="w-20 bg-tile flex flex-col">
+      {CATS.map(c => (
+        <div key={c.id} onTap={() => switchCategory(c.id)} hover-class="pressed" class:list={['flex flex-col items-center py-4', { 'bg-white border-l-2 border-primary': cat.value === c.id }]}>
+          <span class="text-stat">{c.emoji}</span>
+          <span class:list={['text-caption', { 'text-primary font-semibold': cat.value === c.id }, { 'text-mute': cat.value !== c.id }]}>{c.name}</span>
+        </div>
+      ))}
+    </div>
+    <scroll-view scroll-y class="flex-1 h-screen">
+      <div class="pb-24">
+        {visible.value.map(m => (
+          <a key={m.id} href={'/pages/item/item?id=' + m.id} hover-class="pressed" class="block">
+            <MenuItem emoji={m.emoji} name={m.name} desc={m.desc} price={m.price} sold={m.soldStr} />
+          </a>
+        ))}
+      </div>
+    </scroll-view>
+  </div>
+  {cartCount.value > 0 && (
+    <div onTap={goCart} hover-class="pressed" class="fixed bottom-0 left-0 right-0 bg-ink mx-4 mb-3 rounded-full px-5 py-2.5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-body text-white">🛒 {cartCount.value} 件</span>
+        <span class="text-cell text-white font-semibold">¥{cartTotal.value}</span>
+      </div>
+      <span class="text-body text-primary font-semibold">去结算 ›</span>
+    </div>
+  )}
+</div>

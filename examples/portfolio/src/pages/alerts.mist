@@ -1,0 +1,75 @@
+---
+import SectionHeader from '../components/SectionHeader.mist'
+import EmptyState from '../components/EmptyState.mist'
+import Stepper from '../components/Stepper.mist'
+import Tag from '../components/Tag.mist'
+import { market } from '../stores/market.ts'
+import { prefs, setThresholdBp } from '../stores/prefs.ts'
+import { derived } from 'mist'
+
+export const config = { navigationBarTitleText: '波动提醒' }
+
+function signedPct(bp) {
+  const s = (bp / 100).toFixed(2) + '%'
+  if (bp >= 0) {
+    return '+' + s
+  }
+  return s
+}
+
+function toneOf(bp) {
+  if (bp > 0) {
+    return 'warn'
+  }
+  return 'ok'
+}
+
+const thresholdStr = derived(() => (prefs.value.thresholdBp / 100).toFixed(1) + '%')
+
+const triggered = derived(() =>
+  market.value.positions
+    .map(p => {
+      let dayBp = 0
+      if (p.prev > 0) {
+        dayBp = Math.round((p.price - p.prev) * 10000 / p.prev)
+      }
+      return { id: p.id, name: p.name, emoji: p.emoji, dayBp, dayStr: signedPct(dayBp), tone: toneOf(dayBp) }
+    })
+    .filter(p => Math.abs(p.dayBp) >= prefs.value.thresholdBp)
+    .sort((a, b) => Math.abs(b.dayBp) - Math.abs(a.dayBp))
+)
+
+function incThreshold(t) {
+  setThresholdBp(prefs.value.thresholdBp + 50)
+}
+
+function decThreshold(t) {
+  setThresholdBp(prefs.value.thresholdBp - 50)
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  <SectionHeader title="提醒设置" />
+  <div class="mx-4 rounded-lg bg-white px-4 py-3 flex items-center justify-between">
+    <div class="flex flex-col">
+      <span class="text-cell text-ink">日内波动阈值</span>
+      <span class="text-caption text-faint">涨跌超过阈值的持仓会出现在下方</span>
+    </div>
+    <Stepper text={thresholdStr.value} onInc={incThreshold} onDec={decThreshold} />
+  </div>
+
+  <SectionHeader title="今日触发" />
+  {triggered.value.length === 0 && <EmptyState emoji="🔕" line="暂无触发的提醒" hint="降低阈值或刷新行情试试" />}
+
+  {triggered.value.length > 0 && (
+    <div class="mx-4 rounded-lg overflow-hidden bg-white">
+      {triggered.value.map(p => (
+        <a key={p.id} href={'/pages/position/position?id=' + p.id} hover-class="pressed" class="block border-b border-hairline">
+          <div class="flex items-center justify-between px-4 py-3">
+            <span class="text-cell text-ink">{p.emoji} {p.name}</span>
+            <Tag text={p.dayStr} tone={p.tone} />
+          </div>
+        </a>
+      ))}
+    </div>
+  )}
+</div>

@@ -1,0 +1,6 @@
+---
+import { props } from 'mist'
+
+const { amount, big } = props({ amount: 0, big: false })
+---
+<span class:list={['text-danger font-semibold', { 'text-stat': big }, { 'text-body': !big }]}>¥{amount}</span>

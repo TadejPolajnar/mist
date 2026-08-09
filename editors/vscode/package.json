@@ -1,0 +1,57 @@
+{
+  "name": "mist-lang",
+  "displayName": "Mist",
+  "description": "Syntax highlighting for .mist single-file components (mistc)",
+  "version": "0.1.0",
+  "publisher": "mist",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./client.js",
+  "activationEvents": [
+    "onLanguage:mist"
+  ],
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Mist",
+      "properties": {
+        "mist.lspPath": {
+          "type": "string",
+          "default": "mistc-lsp",
+          "description": "Path to the mistc-lsp binary (built with `cargo build -p mistc-lsp`)."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "mist",
+        "aliases": [
+          "Mist",
+          "mist"
+        ],
+        "extensions": [
+          ".mist"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mist",
+        "scopeName": "source.mist",
+        "path": "./syntaxes/mist.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.typescript": "typescript",
+          "meta.embedded.block.css": "css"
+        }
+      }
+    ]
+  }
+}

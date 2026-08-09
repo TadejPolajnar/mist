@@ -1,0 +1,76 @@
+---
+import Cell from '../../../components/Cell.mist'
+import SectionHeader from '../../../components/SectionHeader.mist'
+import { cart, clearCart } from '../../../stores/cart.ts'
+import { appendOrder } from '../../../stores/orders.ts'
+import { state, derived } from 'mist'
+
+export const config = { navigationBarTitleText: '确认订单' }
+
+const name = state('')
+const phone = state('')
+const note = state('')
+const pickup = state('12:30')
+
+const subtotal = derived(() => cart.value.lines.reduce((s, l) => s + l.unit * l.qty, 0))
+const discount = derived(() => subtotal.value >= 30 ? 3 : 0)
+const payable = derived(() => subtotal.value - discount.value)
+const canSubmit = derived(() => name.value.length > 0 && phone.value.length >= 8 && cart.value.lines.length > 0)
+
+function setPickup(e) {
+  pickup.value = e.detail.value
+}
+
+function submitOrder() {
+  if (!canSubmit.value) {
+    wx.showToast({ title: '请填写取餐信息', icon: 'none' })
+    return
+  }
+  appendOrder(cart.value.lines, payable.value, discount.value, pickup.value, note.value)
+  clearCart()
+  wx.switchTab({ url: '/pages/orders/orders' })
+}
+---
+<div class="min-h-screen bg-page pb-28">
+  <SectionHeader title="取餐信息" />
+  <div class="mx-4 rounded-lg overflow-hidden bg-white">
+    <div class="flex items-center px-4 py-3 border-b border-hairline">
+      <span class="text-cell text-ink w-20">称呼</span>
+      <input value:bind={name} placeholder="怎么称呼您" class="flex-1 text-cell" />
+    </div>
+    <div class="flex items-center px-4 py-3 border-b border-hairline">
+      <span class="text-cell text-ink w-20">手机号</span>
+      <input value:bind={phone} type="number" placeholder="用于取餐通知" class="flex-1 text-cell" />
+    </div>
+    <picker mode="time" value={pickup.value} onChange={setPickup}>
+      <div hover-class="pressed" class="flex items-center justify-between px-4 py-3 border-b border-hairline">
+        <span class="text-cell text-ink">取餐时间</span>
+        <span class="text-body text-mute">{pickup.value} ›</span>
+      </div>
+    </picker>
+    <div class="flex items-center px-4 py-3">
+      <span class="text-cell text-ink w-20">备注</span>
+      <input value:bind={note} placeholder="口味偏好等（选填）" class="flex-1 text-cell" />
+    </div>
+  </div>
+
+  <SectionHeader title="订单明细" />
+  <div class="mx-4 rounded-lg overflow-hidden">
+    {cart.value.lines.map(l => (
+      <Cell key={l.line} label={l.emoji + ' ' + l.name + ' ×' + l.qty} value={'¥' + l.unit * l.qty} hint={l.choices} />
+    ))}
+    <Cell label="小计" value={'¥' + subtotal.value} />
+    <Cell label="满 30 减 3" value={'-¥' + discount.value} />
+    <Cell label="应付" value={'¥' + payable.value} />
+  </div>
+
+  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-hairline px-4 py-3 pb-safe flex items-center justify-between">
+    <div class="flex items-baseline gap-1">
+      <span class="text-body text-mute">应付</span>
+      <span class="text-stat text-danger font-semibold">¥{payable.value}</span>
+    </div>
+    <div onTap={submitOrder} hover-class="pressed" class:list={['rounded-full px-8 py-2.5', { 'bg-primary': canSubmit.value }, { 'bg-primary-soft': !canSubmit.value }]}>
+      <span class="text-cell text-white font-semibold">提交订单</span>
+    </div>
+  </div>
+</div>

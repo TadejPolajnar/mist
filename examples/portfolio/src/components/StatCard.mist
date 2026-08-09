@@ -1,0 +1,10 @@
+---
+import { props } from 'mist'
+
+const { label, value, sub, tone } = props({ label: '', value: '', sub: '', tone: 'flat' })
+---
+<div class="flex-1 rounded-lg bg-white px-4 py-3">
+  <span class="block text-caption text-faint">{label}</span>
+  <span class:list={['block text-stat font-semibold mt-1', { 'text-danger': tone === 'up' }, { 'text-primary': tone === 'down' }, { 'text-ink': tone === 'flat' }]}>{value}</span>
+  {sub && <span class:list={['block text-caption mt-0.5', { 'text-danger': tone === 'up' }, { 'text-primary': tone === 'down' }, { 'text-mute': tone === 'flat' }]}>{sub}</span>}
+</div>

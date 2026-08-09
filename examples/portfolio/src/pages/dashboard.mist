@@ -1,0 +1,205 @@
+---
+import StatCard from '../components/StatCard.mist'
+import SectionHeader from '../components/SectionHeader.mist'
+import SparkBars from '../components/SparkBars.mist'
+import AllocationBar from '../components/AllocationBar.mist'
+import { market, applyTick } from '../stores/market.ts'
+import { prefs } from '../stores/prefs.ts'
+import { derived, onPullDownRefresh } from 'mist'
+
+export const config = { navigationBarTitleText: '雾投总览', enablePullDownRefresh: true }
+
+function yuan(cents) {
+  return (cents / 100).toFixed(2)
+}
+
+function signed(cents) {
+  if (cents >= 0) {
+    return '+' + yuan(cents)
+  }
+  return yuan(cents)
+}
+
+function signedPct(bp) {
+  const s = (bp / 100).toFixed(2) + '%'
+  if (bp >= 0) {
+    return '+' + s
+  }
+  return s
+}
+
+function toneOf(v) {
+  if (v > 0) {
+    return 'up'
+  }
+  if (v < 0) {
+    return 'down'
+  }
+  return 'flat'
+}
+
+function dayBpOf(p) {
+  if (p.prev > 0) {
+    return Math.round((p.price - p.prev) * 10000 / p.prev)
+  }
+  return 0
+}
+
+const enriched = derived(() =>
+  market.value.positions.map(p => {
+    const worth = p.qty * p.price
+    const spent = p.qty * p.cost
+    return {
+      id: p.id,
+      name: p.name,
+      emoji: p.emoji,
+      sector: p.sector,
+      worth,
+      spent,
+      pnl: worth - spent,
+      dayBp: dayBpOf(p),
+    }
+  })
+)
+
+const totalValue = derived(() => enriched.value.reduce((s, p) => s + p.worth, 0))
+const totalCost = derived(() => enriched.value.reduce((s, p) => s + p.spent, 0))
+const totalPnl = derived(() => totalValue.value - totalCost.value)
+
+const totalPnlBp = derived(() => {
+  if (totalCost.value > 0) {
+    return Math.round(totalPnl.value * 10000 / totalCost.value)
+  }
+  return 0
+})
+
+const headline = derived(() => ({
+  amount: yuan(totalValue.value),
+  pnl: signed(totalPnl.value),
+  pnlPct: signedPct(totalPnlBp.value),
+  tone: toneOf(totalPnl.value),
+}))
+
+const sectors = derived(() => {
+  const acc = []
+  for (const p of enriched.value) {
+    const found = acc.find(s => s.name === p.sector)
+    if (found) {
+      found.worth += p.worth
+    } else {
+      acc.push({ name: p.sector, worth: p.worth })
+    }
+  }
+  return acc
+})
+
+const allocation = derived(() =>
+  sectors.value
+    .map(s => {
+      let share = 0
+      if (totalValue.value > 0) {
+        share = Math.round(s.worth * 1000 / totalValue.value) / 10
+      }
+      return { name: s.name, share, pctStr: share + '%', barStyle: 'width:' + share + '%' }
+    })
+    .sort((a, b) => b.share - a.share)
+)
+
+const movers = derived(() =>
+  enriched.value
+    .slice()
+    .sort((a, b) => Math.abs(b.dayBp) - Math.abs(a.dayBp))
+    .slice(0, 3)
+    .map(p => ({ id: p.id, name: p.name, emoji: p.emoji, dayStr: signedPct(p.dayBp), tone: toneOf(p.dayBp) }))
+)
+
+const spark = derived(() => {
+  const h = market.value.history
+  if (h.length === 0) {
+    return []
+  }
+  let min = h[0]
+  let max = h[0]
+  for (const v of h) {
+    if (v < min) {
+      min = v
+    }
+    if (v > max) {
+      max = v
+    }
+  }
+  const span = max - min
+  return h.map((v, i) => {
+    let px = 28
+    if (span > 0) {
+      px = 8 + Math.round((v - min) * 48 / span)
+    }
+    return { i, style: 'height:' + px + 'px' }
+  })
+})
+
+const alerts = derived(() =>
+  market.value.positions
+    .map(p => ({ id: p.id, dayBp: dayBpOf(p) }))
+    .filter(p => Math.abs(p.dayBp) >= prefs.value.thresholdBp)
+)
+
+const alertCount = derived(() => alerts.value.length)
+
+const tickLabel = derived(() => '第 ' + market.value.tick + ' 次刷新')
+
+onPullDownRefresh(() => {
+  applyTick()
+  wx.stopPullDownRefresh()
+})
+
+function refresh() {
+  applyTick()
+}
+
+function goAlerts() {
+  wx.switchTab({ url: '/pages/alerts/alerts' })
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  <div class="flex gap-3 px-4 pt-4">
+    <StatCard label="总资产 (元)" value={headline.value.amount} sub={tickLabel.value} tone="flat" />
+    <StatCard label="总盈亏 (元)" value={headline.value.pnl} sub={headline.value.pnlPct} tone={headline.value.tone} />
+  </div>
+
+  <SectionHeader title="资产走势" />
+  <div class="mx-4 rounded-lg bg-white py-3">
+    <SparkBars bars={spark.value} />
+  </div>
+
+  <SectionHeader title="资产配置" />
+  <div class="mx-4 rounded-lg overflow-hidden">
+    {allocation.value.map(s => (
+      <AllocationBar key={s.name} name={s.name} pctStr={s.pctStr} barStyle={s.barStyle} />
+    ))}
+  </div>
+
+  <SectionHeader title="今日异动" />
+  <div class="mx-4 rounded-lg overflow-hidden bg-white">
+    {movers.value.map((m, i) => (
+      <div key={m.id} class="flex items-center justify-between px-4 py-3 border-b border-hairline">
+        <div class="flex items-center gap-2">
+          <span class:list={['text-body font-semibold w-4 text-center', { 'text-danger': i === 0 }, { 'text-amber': i === 1 }, { 'text-faint': i > 1 }]}>{i + 1}</span>
+          <span class="text-cell text-ink">{m.emoji} {m.name}</span>
+        </div>
+        <span class:list={['text-body font-semibold', { 'text-danger': m.tone === 'up' }, { 'text-primary': m.tone === 'down' }, { 'text-mute': m.tone === 'flat' }]}>{m.dayStr}</span>
+      </div>
+    ))}
+  </div>
+
+  {alertCount.value > 0 && (
+    <div onTap={goAlerts} hover-class="pressed" class="mx-4 mt-4 rounded-lg bg-danger/10 px-4 py-3 flex items-center justify-between">
+      <span class="text-body text-danger">{alertCount.value} 支持仓触发波动提醒</span>
+      <span class="text-body text-danger">›</span>
+    </div>
+  )}
+
+  <div onTap={refresh} hover-class="pressed" class="mx-4 mt-4 rounded-full bg-primary py-2.5 flex items-center justify-center">
+    <span class="text-cell text-white font-semibold">刷新行情</span>
+  </div>
+</div>

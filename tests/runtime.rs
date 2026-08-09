@@ -225,3 +225,305 @@ console.log('OK');
     );
     assert_eq!(out, "OK");
 }
+
+#[test]
+fn dirty_deps_skip_unrelated_deriveds() {
+    let out = run_node(
+        r#"
+const calls = [];
+let aRuns = 0, bRuns = 0;
+const page = {
+  data: { x: 1, y: 10, a: null, b: null },
+  setData(o) { calls.push(o); },
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, 'a', null, () => { aRuns++; return this.data.x * 2; }, ['x']);
+    rt.derive(this, __o, 'b', null, () => { bRuns++; return this.data.y * 2; }, ['y']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('x', 5);
+setTimeout(() => {
+  if (aRuns !== 2) throw new Error('a should recompute: ' + aRuns);
+  if (bRuns !== 1) throw new Error('b should be skipped: ' + bRuns);
+  if (calls[1].a !== 10) throw new Error('bad a: ' + calls[1].a);
+  if ('b' in calls[1]) throw new Error('b should not be written');
+  console.log('OK');
+}, 10);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn dirty_chain_recomputes_dependent_derived() {
+    let out = run_node(
+        r#"
+let bRuns = 0;
+const calls = [];
+const page = {
+  data: { x: 1, a: null, b: null },
+  setData(o) { calls.push(o); },
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, 'a', null, () => this.data.x + 1, ['x']);
+    rt.derive(this, __o, 'b', null, () => { bRuns++; return this.data.a * 10; }, ['a']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('x', 4);
+setTimeout(() => {
+  if (bRuns !== 2) throw new Error('b must follow a: ' + bRuns);
+  if (calls[1].b !== 50) throw new Error('bad chained b: ' + calls[1].b);
+  console.log('OK');
+}, 10);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn nameless_touch_recomputes_everything() {
+    let out = run_node(
+        r#"
+let aRuns = 0, bRuns = 0;
+const page = {
+  data: { x: 1, y: 1, a: null, b: null },
+  setData() {},
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, 'a', null, () => { aRuns++; return this.data.x; }, ['x']);
+    rt.derive(this, __o, 'b', null, () => { bRuns++; return this.data.y; }, ['y']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+rt.touch(page);
+setTimeout(() => {
+  if (aRuns !== 2 || bRuns !== 2) throw new Error('nameless touch must recompute all: ' + aRuns + ',' + bRuns);
+  console.log('OK');
+}, 10);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn rejected_setdata_rolls_back_and_retries() {
+    let out = run_node(
+        r#"
+let n = 0;
+const calls = [];
+const page = {
+  data: { todos: [{ id: 1, done: false }], visible: null },
+  setData(o) {
+    n++;
+    if (n === 2) throw new Error('data too large');
+    if (n > 1) calls.push(o);
+  },
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, 'visible', 'id', () => this.data.todos.filter(() => true), ['todos']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('todos[0].done', true);
+setTimeout(() => {
+  if (page.data.todos[0].done !== false) throw new Error('mirror not rolled back');
+  if (page.__prev.visible[0].done !== false) throw new Error('__prev advanced despite rejection');
+  page.__set('todos[0].done', true);
+  setTimeout(() => {
+    if (calls.length !== 1) throw new Error('retry flush missing: ' + calls.length);
+    if (calls[0]['todos[0].done'] !== true) throw new Error('retry payload missing state write');
+    if (calls[0]['visible[0].done'] !== true) throw new Error('retry payload missing derived write: ' + JSON.stringify(calls[0]));
+    console.log('OK');
+  }, 10);
+}, 10);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn rejected_setdata_resyncs_store_mirror_from_store_truth() {
+    let out = run_node(
+        r#"
+const store = rt.store({ n: 1 });
+let fail = false;
+const calls = [];
+const page = {
+  data: { st: null },
+  setData(o) {
+    if (fail) { fail = false; throw new Error('data too large'); }
+    calls.push(o);
+  },
+  __derive() { return {}; },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.bindStores(page, [[store, 'st']]);
+fail = true;
+store.__set('n', 5);
+setTimeout(() => {
+  if (store.value.n !== 5) throw new Error('store must keep the committed value');
+  if (page.data.st.n !== 5) throw new Error('mirror must resync to store truth: ' + JSON.stringify(page.data.st));
+  const last = calls[calls.length - 1];
+  if (!last || !last.st || last.st.n !== 5) throw new Error('resync setData missing: ' + JSON.stringify(calls));
+  console.log('OK');
+}, 20);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn unchanged_keyed_rows_reuse_prev_snapshots() {
+    let out = run_node(
+        r#"
+const page = {
+  data: { todos: [{ id: 1, done: false }, { id: 2, done: false }], visible: null },
+  setData() {},
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, 'visible', 'id', () => this.data.todos.map(t => ({ id: t.id, done: t.done })), ['todos']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+const snap0 = page.__prev.visible[1];
+page.__set('todos[0].done', true);
+setTimeout(() => {
+  if (page.__prev.visible[1] !== snap0) throw new Error('unchanged row snapshot was reallocated');
+  if (page.__prev.visible[0].done !== true) throw new Error('changed row snapshot stale');
+  console.log('OK');
+}, 10);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn rejected_push_rolls_back_array_length() {
+    let out = run_node(
+        r#"
+let n = 0;
+const page = {
+  data: { todos: [{ id: 1 }], visible: null },
+  setData() {
+    n++;
+    if (n === 2) throw new Error('data too large');
+  },
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, 'visible', 'id', () => this.data.todos.filter(() => true), ['todos']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('todos[' + page.data.todos.length + ']', { id: 2 });
+setTimeout(() => {
+  if (page.data.todos.length !== 1) throw new Error('array length not rolled back: ' + page.data.todos.length);
+  if (page.data.todos.some((t) => t === undefined)) throw new Error('undefined hole left behind');
+  console.log('OK');
+}, 10);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn persisted_store_hydrates_and_writes_debounced() {
+    let out = run_node(
+        r#"
+const disk = {};
+let writes = 0;
+global.wx = {
+  getStorageSync(k) { return disk[k]; },
+  setStorageSync(k, v) { writes++; disk[k] = v; },
+};
+disk.cart = { v: 1, data: { items: ['seeded'], total: 5 } };
+const s = rt.store({ items: [], total: 0 }, { persist: 'cart', version: 1 });
+if (s.value.items[0] !== 'seeded') throw new Error('hydration failed: ' + JSON.stringify(s.value));
+s.__set('total', 6);
+s.__set('total', 7);
+setTimeout(() => {
+  if (writes !== 1) throw new Error('expected 1 debounced write, got ' + writes);
+  if (disk.cart.data.total !== 7) throw new Error('persisted stale value: ' + disk.cart.data.total);
+  if (disk.cart.v !== 1) throw new Error('version envelope missing');
+  console.log('OK');
+}, 350);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn persisted_store_migrates_old_versions() {
+    let out = run_node(
+        r#"
+const disk = { s: { v: 1, data: { n: 3 } } };
+global.wx = {
+  getStorageSync(k) { return disk[k]; },
+  setStorageSync(k, v) { disk[k] = v; },
+};
+const s = rt.store({ n: 0, label: '' }, {
+  persist: 's',
+  version: 2,
+  migrate(old, oldV) { return { n: old.n, label: 'migrated-from-' + oldV }; },
+});
+if (s.value.label !== 'migrated-from-1') throw new Error('migrate not applied: ' + JSON.stringify(s.value));
+if (s.value.n !== 3) throw new Error('migrate lost data');
+console.log('OK');
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn unpersisted_store_never_touches_storage() {
+    let out = run_node(
+        r#"
+let touched = 0;
+global.wx = {
+  getStorageSync() { touched++; },
+  setStorageSync() { touched++; },
+};
+const s = rt.store({ n: 0 });
+s.__set('n', 1);
+setTimeout(() => {
+  if (touched !== 0) throw new Error('storage touched ' + touched + ' times');
+  if (s.__persistTimer) throw new Error('timer scheduled without persist');
+  console.log('OK');
+}, 250);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn migrate_persists_immediately_and_undefined_falls_back_to_init() {
+    let out = run_node(
+        r#"
+const disk = { s: { v: 1, data: { n: 3 } }, u: { v: 1, data: { n: 9 } } };
+global.wx = {
+  getStorageSync(k) { return disk[k]; },
+  setStorageSync(k, v) { disk[k] = v; },
+};
+const s = rt.store({ n: 0 }, { persist: 's', version: 2, migrate(old) { return { n: old.n * 10 }; } });
+if (s.value.n !== 30) throw new Error('migrate not applied');
+if (disk.s.v !== 2 || disk.s.data.n !== 30) throw new Error('migrated envelope not written back: ' + JSON.stringify(disk.s));
+const u = rt.store({ n: 1 }, { persist: 'u', version: 2, migrate() {} });
+if (u.value.n !== 1) throw new Error('undefined migrate must fall back to init: ' + JSON.stringify(u.value));
+console.log('OK');
+"#,
+    );
+    assert_eq!(out, "OK");
+}

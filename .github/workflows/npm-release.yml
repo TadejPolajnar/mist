@@ -1,0 +1,134 @@
+name: npm release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  version-gate:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: check
+        name: Assert Cargo.toml version matches the tag
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${TAG_NAME#v}"
+          case "$tag" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "tag $tag is not a semver version" >&2; exit 1 ;;
+          esac
+          cargo="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [ "$tag" != "$cargo" ]; then
+            echo "tag $tag does not match Cargo.toml version $cargo" >&2
+            echo "bump Cargo.toml, commit, then re-tag" >&2
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version-gate
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - dir: darwin-arm64
+            target: aarch64-apple-darwin
+            runner: macos-15
+          - dir: darwin-x64
+            target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - dir: linux-x64-gnu
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - dir: linux-arm64-gnu
+            target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - dir: linux-x64-musl
+            target: x86_64-unknown-linux-musl
+            runner: ubuntu-22.04
+          - dir: win32-x64
+            target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }} --bin mistc
+      - name: Stage binary
+        shell: bash
+        env:
+          DIR: ${{ matrix.dir }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          ext=""
+          [ "$DIR" = "win32-x64" ] && ext=".exe"
+          src="target/$TARGET/release/mistc$ext"
+          test -s "$src" || { echo "binary missing or empty: $src" >&2; exit 1; }
+          cp "$src" "npm/$DIR/bin/mistc$ext"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.dir }}
+          path: npm/${{ matrix.dir }}/bin/mistc*
+          if-no-files-found: error
+
+  publish:
+    needs: [version-gate, build]
+    runs-on: ubuntu-22.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.version-gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+      - name: Place binaries
+        run: |
+          set -euo pipefail
+          for d in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu linux-x64-musl win32-x64; do
+            cp artifacts/"$d"/mistc* npm/"$d"/bin/
+          done
+      - name: Verify every binary is present and non-empty
+        run: |
+          set -euo pipefail
+          for d in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu linux-x64-musl; do
+            test -s "npm/$d/bin/mistc" || { echo "missing npm/$d/bin/mistc" >&2; exit 1; }
+            chmod +x "npm/$d/bin/mistc"
+          done
+          test -s npm/win32-x64/bin/mistc.exe || { echo "missing win32 binary" >&2; exit 1; }
+      - name: Stamp version into all package.json
+        run: node npm/stamp.mjs "$VERSION"
+      - name: Dry-run publish all seven packages
+        run: |
+          set -euo pipefail
+          for d in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu linux-x64-musl win32-x64 mist-lang; do
+            (cd "npm/$d" && npm publish --dry-run --access public)
+          done
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          for d in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu linux-x64-musl win32-x64; do
+            (cd "npm/$d" && npm publish --access public --provenance)
+          done
+      - name: Publish meta package last
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: cd npm/mist-lang && npm publish --access public --provenance

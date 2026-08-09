@@ -1,0 +1,6 @@
+{
+  "rules": [
+    { "action": "disallow", "page": "packages/order/pages/checkout/checkout" },
+    { "action": "allow", "page": "*" }
+  ]
+}

@@ -1,5 +1,5 @@
 /target
 dist/
-node_modules/
-.swc/
-project.private.config.json
+npm/*/bin/mistc*
+*.vsix
+editors/vscode/node_modules/

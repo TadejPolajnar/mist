@@ -1,0 +1,54 @@
+---
+import { onLaunch, onError, onPageNotFound, onUnhandledRejection, onThemeChange } from 'mist'
+
+export const config = {
+  window: {
+    navigationBarTitleText: '雾茶 MistTea',
+    navigationBarBackgroundColor: '#ffffff',
+    navigationBarTextStyle: 'black',
+    backgroundColor: '#f7f7f7',
+  },
+  tabBar: {
+    color: '#888888',
+    selectedColor: '#07c160',
+    backgroundColor: '#ffffff',
+    borderStyle: 'black',
+    list: [
+      { pagePath: 'pages/index/index', text: '首页', iconPath: 'assets/icons/home.png', selectedIconPath: 'assets/icons/home.png' },
+      { pagePath: 'pages/menu/menu', text: '点单', iconPath: 'assets/icons/menu.png', selectedIconPath: 'assets/icons/menu.png' },
+      { pagePath: 'pages/cart/cart', text: '购物车', iconPath: 'assets/icons/cart.png', selectedIconPath: 'assets/icons/cart.png' },
+      { pagePath: 'pages/orders/orders', text: '订单', iconPath: 'assets/icons/orders.png', selectedIconPath: 'assets/icons/orders.png' },
+    ],
+  },
+  preloadRule: {
+    'pages/cart/cart': { network: 'all', packages: ['order'] },
+  },
+}
+
+onLaunch(() => {
+  console.log('mist-food launched')
+})
+
+onError((error) => {
+  console.error('mist-food error:', error)
+})
+
+onUnhandledRejection((e) => {
+  console.error('mist-food unhandled rejection:', e.reason)
+})
+
+onPageNotFound((e) => {
+  console.warn('mist-food page not found:', e.path)
+  wx.switchTab({ url: '/pages/index/index' })
+})
+
+onThemeChange((e) => {
+  console.log('mist-food theme:', e.theme)
+})
+---
+
+<style>
+page { background: #f7f7f7; }
+.pressed { opacity: 0.6; }
+@keyframes mist-pulse { 0% { opacity: 1; } 50% { opacity: 0.35; } 100% { opacity: 1; } }
+</style>

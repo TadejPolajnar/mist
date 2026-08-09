@@ -1,0 +1,45 @@
+---
+import { onLaunch, onError, onUnhandledRejection, onThemeChange } from 'mist'
+
+export const config = {
+  entryPagePath: 'pages/dashboard/dashboard',
+  window: {
+    navigationBarTitleText: '雾投 MistFolio',
+    navigationBarBackgroundColor: '#ffffff',
+    navigationBarTextStyle: 'black',
+    backgroundColor: '#f7f7f7',
+  },
+  tabBar: {
+    color: '#888888',
+    selectedColor: '#07c160',
+    backgroundColor: '#ffffff',
+    borderStyle: 'black',
+    list: [
+      { pagePath: 'pages/dashboard/dashboard', text: '总览', iconPath: 'assets/icons/dashboard.png', selectedIconPath: 'assets/icons/dashboard.png' },
+      { pagePath: 'pages/holdings/holdings', text: '持仓', iconPath: 'assets/icons/holdings.png', selectedIconPath: 'assets/icons/holdings.png' },
+      { pagePath: 'pages/alerts/alerts', text: '提醒', iconPath: 'assets/icons/alerts.png', selectedIconPath: 'assets/icons/alerts.png' },
+    ],
+  },
+}
+
+onLaunch(() => {
+  console.log('mist-folio launched')
+})
+
+onError((error) => {
+  console.error('mist-folio error:', error)
+})
+
+onUnhandledRejection((e) => {
+  console.error('mist-folio unhandled rejection:', e.reason)
+})
+
+onThemeChange((e) => {
+  console.log('mist-folio theme:', e.theme)
+})
+---
+
+<style>
+page { background: #f7f7f7; }
+.pressed { opacity: 0.6; }
+</style>

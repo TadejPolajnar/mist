@@ -1,0 +1,38 @@
+{
+  "name": "mist-lang",
+  "version": "0.1.0",
+  "description": "Mist compiler for WeChat mini-programs",
+  "bin": {
+    "mistc": "bin/mistc.js",
+    "mist-lang": "bin/mistc.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": [
+    "wechat",
+    "miniprogram",
+    "compiler",
+    "wxml",
+    "mist"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TadejPolajnar/mist.git"
+  },
+  "dependencies": {
+    "@tailwindcss/cli": "^4"
+  },
+  "optionalDependencies": {
+    "@mist-lang/darwin-arm64": "0.1.0",
+    "@mist-lang/darwin-x64": "0.1.0",
+    "@mist-lang/linux-x64-gnu": "0.1.0",
+    "@mist-lang/linux-arm64-gnu": "0.1.0",
+    "@mist-lang/linux-x64-musl": "0.1.0",
+    "@mist-lang/win32-x64": "0.1.0"
+  }
+}

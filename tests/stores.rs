@@ -156,3 +156,65 @@ fn unknown_store_export_errors() {
     let err = mistc::compile_project_dir(&dir).unwrap_err();
     assert!(err.contains("not exported"), "err: {}", err);
 }
+
+#[test]
+fn derived_reading_store_emits_mirror_dep() {
+    let dir = std::env::temp_dir().join("mist-store-deps");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("stores")).unwrap();
+    std::fs::write(
+        dir.join("stores/user.ts"),
+        "import { store } from 'mist'\nexport const user = store({ name: '', visits: 0 })\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("page.mist"),
+        "---\nimport { user } from './stores/user.ts'\nimport { state, derived } from 'mist'\nconst n = state(0)\nconst greeting = derived(() => `Hi ${user.value.name}`)\nconst mixed = derived(() => user.value.visits + n.value)\n---\n<span>{greeting.value}{mixed.value}</span>\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project(&dir.join("page.mist")).expect("project compile failed");
+    let page = p.files.iter().find(|f| f.name == "page").expect("page missing");
+    assert!(page.output.js.contains("'greeting', null, () =>"), "js:\n{}", page.output.js);
+    assert!(page.output.js.contains(", ['user']);"), "js:\n{}", page.output.js);
+    assert!(page.output.js.contains(", ['n', 'user']);"), "js:\n{}", page.output.js);
+}
+
+#[test]
+fn derived_calling_helper_that_reads_store_harvests_store_dep() {
+    let dir = std::env::temp_dir().join("mist-store-helper-deps");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("stores")).unwrap();
+    std::fs::write(
+        dir.join("stores/team.ts"),
+        "import { store } from 'mist'\nexport const team = store({ members: [] })\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("page.mist"),
+        "---\nimport { team } from './stores/team.ts'\nimport { state, derived } from 'mist'\nconst n = state(0)\nfunction whoOf(id) {\n  const m = team.value.members.find(x => x.id === id)\n  if (m) {\n    return m.name\n  }\n  return 'nobody'\n}\nconst label = derived(() => whoOf(n.value))\n---\n<span>{label.value}</span>\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project(&dir.join("page.mist")).expect("project compile failed");
+    let page = p.files.iter().find(|f| f.name == "page").expect("page missing");
+    assert!(page.output.js.contains("'label', null, () => this.whoOf(this._n), ['n', 'team']);"), "js:\n{}", page.output.js);
+}
+
+#[test]
+fn store_options_pass_through_to_runtime() {
+    let (js, _) = mistc::frontmatter::compile_store_module(
+        "import { store } from 'mist'\nexport const cart = store({ items: [] }, { persist: 'cart', version: 1 })\n",
+        "./mist-rt.js",
+    )
+    .expect("compile failed");
+    assert!(js.contains("rt.store({ items: [] }, { persist: 'cart', version: 1 })"), "js:\n{}", js);
+}
+
+#[test]
+fn store_option_mutations_compile_to_path_writes() {
+    let (js, _) = mistc::frontmatter::compile_store_module(
+        "import { store } from 'mist'\nexport const other = store({ n: 0 })\nexport const s = store({ a: 1 }, { persist: 's', version: 2, migrate(old) { other.value.n = 1; return old } })\n",
+        "./mist-rt.js",
+    )
+    .expect("compile failed");
+    assert!(js.contains("other.__set(`n`, 1)"), "js:\n{}", js);
+}

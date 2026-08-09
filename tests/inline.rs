@@ -81,3 +81,47 @@ fn inlined_component_rejects_children_and_callbacks() {
     let err = mistc::compile_project(&dir.join("page.mist")).unwrap_err();
     assert!(err.contains("callback prop"), "err: {}", err);
 }
+
+#[test]
+fn config_inline_false_opts_out_of_inlining() {
+    let dir = std::env::temp_dir().join("mist-inline-optout");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("Chip.mist"),
+        "---\nimport { props } from 'mist'\nconst { label } = props()\nexport const config = { inline: false }\n---\n<span>{label}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("page.mist"),
+        "---\nimport Chip from './Chip.mist'\nimport { state } from 'mist'\nconst n = state(0)\n---\n<div><Chip label=\"x\" /><span>{n.value}</span></div>\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project(&dir.join("page.mist")).expect("project compile failed");
+    let chip = p.files.iter().find(|f| f.name == "chip").expect("chip not compiled");
+    assert!(!chip.output.js.is_empty(), "chip must be a real Component, not an inlined template");
+    assert!(chip.output.js.contains("Component({"), "js:\n{}", chip.output.js);
+    let json = chip.output.json.as_deref().unwrap_or("");
+    assert!(!json.contains("inline"), "json leaked inline key:\n{}", json);
+}
+
+#[test]
+fn component_with_plain_const_is_not_inlined() {
+    let dir = std::env::temp_dir().join("mist-inline-const");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("Badge.mist"),
+        "---\nimport { props } from 'mist'\nconst { count } = props({ count: 0 })\nconst LABEL = 'items'\n---\n<span>{count} {LABEL}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("page.mist"),
+        "---\nimport Badge from './Badge.mist'\nimport { state } from 'mist'\nconst n = state(0)\n---\n<div><Badge count={n.value} /><span>{n.value}</span></div>\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project(&dir.join("page.mist")).expect("project compile failed");
+    let badge = p.files.iter().find(|f| f.name == "badge").expect("badge not compiled");
+    assert!(badge.output.js.contains("Component({"), "const-bearing component must stay real:\n{}", badge.output.js);
+    assert!(badge.output.js.contains("LABEL: LABEL,"), "const must seed component data:\n{}", badge.output.js);
+}

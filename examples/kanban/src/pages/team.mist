@@ -1,0 +1,73 @@
+---
+import SectionHeader from '../components/SectionHeader.mist'
+import Stepper from '../components/Stepper.mist'
+import Tag from '../components/Tag.mist'
+import { team, addMember } from '../stores/team.ts'
+import { board } from '../stores/board.ts'
+import { prefs, setWipLimit } from '../stores/prefs.ts'
+import { state, derived } from 'mist'
+
+export const config = { navigationBarTitleText: '团队' }
+
+const name = state('')
+
+const roster = derived(() =>
+  team.value.members.map(m => {
+    let open = 0
+    for (const c of board.value.cards) {
+      if (c.assignee === m.id && c.col !== 'done') {
+        open++
+      }
+    }
+    return { id: m.id, label: m.avatar + ' ' + m.name, loadStr: open + ' 张进行中', busy: open > prefs.value.wipLimit }
+  })
+)
+
+const wipStr = derived(() => prefs.value.wipLimit + ' 张')
+
+function submit() {
+  if (name.value.length === 0) {
+    wx.showToast({ title: '请输入成员名字', icon: 'none' })
+    return
+  }
+  addMember(name.value)
+  name.value = ''
+}
+
+function incWip(t) {
+  setWipLimit(prefs.value.wipLimit + 1)
+}
+
+function decWip(t) {
+  setWipLimit(prefs.value.wipLimit - 1)
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  <SectionHeader title="在制限制" />
+  <div class="mx-4 rounded-lg bg-white px-4 py-3 flex items-center justify-between">
+    <div class="flex flex-col">
+      <span class="text-cell text-ink">进行中列上限</span>
+      <span class="text-caption text-faint">超过上限的列会在看板上标红</span>
+    </div>
+    <Stepper text={wipStr.value} onInc={incWip} onDec={decWip} />
+  </div>
+
+  <SectionHeader title="成员" />
+  <div class="mx-4 rounded-lg overflow-hidden bg-white">
+    {roster.value.map(m => (
+      <div key={m.id} class="flex items-center justify-between px-4 py-3 border-b border-hairline">
+        <span class="text-cell text-ink">{m.label}</span>
+        <Tag text={m.loadStr} tone={m.busy ? 'warn' : 'mute'} />
+      </div>
+    ))}
+  </div>
+
+  <SectionHeader title="添加成员" />
+  <div class="mx-4 rounded-lg bg-white px-4 py-3 flex items-center">
+    <span class="text-cell text-ink w-16">名字</span>
+    <input value:bind={name} placeholder="新同事叫什么" class="flex-1 text-cell" />
+  </div>
+  <div onTap={submit} hover-class="pressed" class="mx-4 mt-3 rounded-full bg-primary py-2.5 flex items-center justify-center">
+    <span class="text-cell text-white font-semibold">加入团队</span>
+  </div>
+</div>

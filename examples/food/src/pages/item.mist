@@ -1,0 +1,142 @@
+---
+import PriceTag from '../components/PriceTag.mist'
+import QtyStepper from '../components/QtyStepper.mist'
+import OptionGroup from '../components/OptionGroup.mist'
+import { addLine } from '../stores/cart.ts'
+import { state, derived, onLoad, onShareAppMessage } from 'mist'
+
+export const config = { navigationBarTitleText: '商品详情' }
+
+const MENU = [
+  { id: 'sig-boba', cat: 'tea', name: '招牌珍珠奶茶', emoji: '🧋', desc: '黑糖珍珠 · 现煮', price: 15, opts: true },
+  { id: 'brown-sugar', cat: 'tea', name: '黑糖鲜奶', emoji: '🥛', desc: '虎纹挂壁', price: 17, opts: true },
+  { id: 'oolong-milk', cat: 'tea', name: '乌龙轻乳茶', emoji: '🍵', desc: '清爽不腻', price: 14, opts: true },
+  { id: 'cheese-jasmine', cat: 'tea', name: '芝士茉莉', emoji: '🧀', desc: '咸香芝士盖', price: 16, opts: true },
+  { id: 'grape', cat: 'fruit', name: '多肉葡萄', emoji: '🍇', desc: '整颗夏黑', price: 19, opts: true },
+  { id: 'strawberry', cat: 'fruit', name: '芝士草莓', emoji: '🍓', desc: '当季鲜果', price: 20, opts: true },
+  { id: 'lemon', cat: 'fruit', name: '手打柠檬茶', emoji: '🍋', desc: '暴打香水柠檬', price: 12, opts: true },
+  { id: 'mango', cat: 'fruit', name: '杨枝甘露', emoji: '🥭', desc: '西柚粒粒', price: 18, opts: true },
+  { id: 'latte', cat: 'coffee', name: '生椰拿铁', emoji: '🥥', desc: '厚椰乳', price: 18, opts: true },
+  { id: 'americano', cat: 'coffee', name: '冰美式', emoji: '🧊', desc: 'SOE 豆', price: 12, opts: true },
+  { id: 'mocha', cat: 'coffee', name: '燕麦摩卡', emoji: '🍫', desc: '比利时可可', price: 19, opts: true },
+  { id: 'flatwhite', cat: 'coffee', name: '澳白', emoji: '☕', desc: '双份浓缩', price: 16, opts: true },
+  { id: 'fries', cat: 'snack', name: '脆薯条', emoji: '🍟', desc: '现炸 · 大份', price: 9, opts: false },
+  { id: 'eggwaffle', cat: 'snack', name: '鸡蛋仔', emoji: '🧇', desc: '港式原味', price: 12, opts: false },
+  { id: 'toast', cat: 'snack', name: '厚切吐司', emoji: '🍞', desc: '黄油蜂蜜', price: 10, opts: false },
+  { id: 'pudding', cat: 'snack', name: '布丁', emoji: '🍮', desc: '焦糖鸡蛋', price: 6, opts: false },
+]
+
+const OPTIONS = [
+  { id: 'size', name: '规格', choices: [{ id: 'm', label: '中杯', delta: 0 }, { id: 'l', label: '大杯', delta: 3 }] },
+  { id: 'sugar', name: '糖度', choices: [{ id: 's100', label: '标准糖', delta: 0 }, { id: 's50', label: '半糖', delta: 0 }, { id: 's0', label: '无糖', delta: 0 }] },
+  { id: 'ice', name: '冰量', choices: [{ id: 'i100', label: '正常冰', delta: 0 }, { id: 'i50', label: '少冰', delta: 0 }, { id: 'hot', label: '热饮', delta: 1 }] },
+]
+
+const item = state(MENU[0])
+const sel = state({ size: 'm', sugar: 's100', ice: 'i100' })
+const qty = state(1)
+
+const groups = derived(() =>
+  (item.value.opts ? OPTIONS : []).map(g => ({
+    id: g.id,
+    name: g.name,
+    choices: g.choices.map(c => ({
+      id: c.id,
+      label: c.delta ? c.label + ' +¥' + c.delta : c.label,
+      picked: sel.value[g.id] === c.id,
+    })),
+  }))
+)
+
+const unit = derived(() => {
+  if (!item.value.opts) {
+    return item.value.price
+  }
+  const extra = OPTIONS.reduce((s, g) => {
+    const c = g.choices.find(x => x.id === sel.value[g.id])
+    return s + (c ? c.delta : 0)
+  }, 0)
+  return item.value.price + extra
+})
+
+const total = derived(() => unit.value * qty.value)
+
+onLoad(({ id }) => {
+  const found = MENU.find(m => m.id === id)
+  if (found) {
+    item.value = found
+  }
+  sel.value = { size: 'm', sugar: 's100', ice: 'i100' }
+  qty.value = 1
+})
+
+function chooseOption(gid, cid) {
+  sel.value[gid] = cid
+}
+
+function incQty(t) {
+  qty.value++
+}
+
+function decQty(t) {
+  if (qty.value > 1) {
+    qty.value--
+  }
+}
+
+function selLabels() {
+  return item.value.opts
+    ? OPTIONS.map(g => {
+        const c = g.choices.find(x => x.id === sel.value[g.id])
+        return c ? c.label : ''
+      }).filter(Boolean).join(' · ')
+    : ''
+}
+
+const selSummary = derived(() => selLabels())
+
+function addToCart() {
+  const labels = selLabels()
+  addLine(item.value.id, item.value.name, item.value.emoji, unit.value, qty.value, labels)
+  wx.showToast({ title: '已加入购物车', icon: 'success' })
+}
+
+onShareAppMessage(() => ({ title: item.value.name + ' — 雾茶', path: '/pages/item/item?id=' + item.value.id }))
+---
+<div class="min-h-screen bg-page pb-28">
+  <div style="background: linear-gradient(180deg, #e8f8ef, #ffffff)" class="flex flex-col items-center py-8">
+    <span class="text-emoji-xl">{item.value.emoji}</span>
+    <span class="text-stat text-ink font-semibold mt-2">{item.value.name}</span>
+    <span class="text-body text-faint mt-1">{item.value.desc}</span>
+    <div class="flex gap-2 mt-2">
+      <span class="text-caption text-primary bg-primary/10 rounded-full px-2 py-0.5">现点现做</span>
+      <span class="text-caption text-primary bg-primary/10 rounded-full px-2 py-0.5">可选大杯</span>
+    </div>
+  </div>
+
+  {groups.value.map(g => (
+    <OptionGroup key={g.id} group={g} onPick={chooseOption} />
+  ))}
+
+  <div class="flex items-center justify-between bg-white px-4 py-3 border-b border-hairline">
+    <span class="text-cell text-ink">数量</span>
+    <QtyStepper qty={qty.value} tag={0} onInc={incQty} onDec={decQty} />
+  </div>
+
+  {selSummary.value && (
+    <div class="flex items-center justify-between bg-white px-4 py-3">
+      <span class="text-cell text-ink">已选</span>
+      <span class="text-caption text-faint">{selSummary.value}</span>
+    </div>
+  )}
+
+  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-hairline px-4 py-3 pb-safe flex items-center justify-between">
+    <div class="flex items-baseline gap-1">
+      <span class="text-body text-mute">合计</span>
+      <PriceTag amount={total.value} big />
+    </div>
+    <div onTap={addToCart} hover-class="pressed" class="rounded-full bg-primary px-8 py-2.5">
+      <span class="text-cell text-white font-semibold">加入购物车</span>
+    </div>
+  </div>
+</div>

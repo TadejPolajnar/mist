@@ -1,0 +1,22 @@
+{
+  "name": "@mist-lang/linux-x64-gnu",
+  "version": "0.1.0",
+  "description": "Mist compiler binary for linux x64",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "bin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TadejPolajnar/mist.git"
+  }
+}

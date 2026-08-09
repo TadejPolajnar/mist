@@ -1,0 +1,14 @@
+---
+import { props } from 'mist'
+
+const { text, onInc, onDec } = props({ text: '' })
+---
+<div class="flex items-center gap-2">
+  <div class="w-7 h-7 rounded-full border border-line flex items-center justify-center" hover-class="pressed" onTap={() => onDec(0)}>
+    <span class="text-cell text-ink">−</span>
+  </div>
+  <span class="text-cell text-ink min-w-14 text-center">{text}</span>
+  <div class="w-7 h-7 rounded-full bg-primary flex items-center justify-center" hover-class="pressed" onTap={() => onInc(0)}>
+    <span class="text-cell text-white">+</span>
+  </div>
+</div>

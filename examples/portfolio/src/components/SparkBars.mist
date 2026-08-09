@@ -1,0 +1,10 @@
+---
+import { props } from 'mist'
+
+const { bars } = props({ bars: [] })
+---
+<div class="flex items-end gap-1 h-14 px-4">
+  {bars.map(b => (
+    <div key={b.i} class="flex-1 rounded-sm bg-primary/60" style={b.style}></div>
+  ))}
+</div>

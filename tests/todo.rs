@@ -16,7 +16,7 @@ fn compiles_todo_example() {
 
     // JS: `todos` is unbound (template renders `visible`) → dead-data elimination:
     // instance-field mutation + rt.touch, and todos stays out of data entirely
-    assert!(out.js.contains("(this._todos[i].done = !this._todos[i].done, rt.touch(this))"), "js:\n{}", out.js);
+    assert!(out.js.contains("(this._todos[i].done = !this._todos[i].done, rt.touch(this, 'todos'))"), "js:\n{}", out.js);
     assert!(out.js.contains("this._todos = ["), "js:\n{}", out.js);
     assert!(!out.js.contains("todos: ["), "js:\n{}", out.js);
     assert!(out.js.contains("this.__set('filter',"), "js:\n{}", out.js);

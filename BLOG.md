@@ -1,4 +1,4 @@
-# I wrote a compiler to find out how compilers work. Builds got 10× faster, updates got 12× smaller.
+# I wrote a compiler to find out how compilers work. It ships 12× fewer bytes than Taro.
 
 *Should you use this? No — it's a prototype. Read it for the compiler tricks, the
 bugs that only appear on real hardware, and one optimization a runtime
@@ -19,8 +19,9 @@ about Jarred Sumner [rewriting Bun in Rust](https://bun.com/blog/bun-in-rust).
 Reading more blog posts wasn't going to fix my gap. The only way I've ever
 learned anything is to build the thing and let it break in my hands.
 
-So: build a compiler. Not a toy that turns arithmetic into assembly — something
-that has to survive contact with a real platform and a real competitor.
+So: build a compiler. Not a toy that turns arithmetic into assembly. Something
+that has to survive contact with a real platform, real constraints, and a real
+competitor.
 
 ## 2. The target: WeChat Mini Programs
 
@@ -42,7 +43,15 @@ you push across that bridge, and how often?*
 I'd heard of these frameworks. I'd never used them. That turned out to be an
 advantage: I had no idea what was supposed to be hard.
 
-## 3. The insight that made it possible
+## 3. The challenge
+
+> **Build my own component language. Write the compiler in Rust. Make it faster
+> than what exists.**
+
+Plus one rule that shaped everything: **measure or it didn't happen.** No "feels
+faster." Numbers, from the real platform, against a real competitor.
+
+## 4. The insight that made it possible
 
 Here's what I only understood after digging into how Taro works.
 
@@ -78,7 +87,7 @@ the same idea pays out in **bytes across a serialized cross-thread bridge**,
 where the cost is brutal, measurable, and scales with your data. Same trick,
 much better odds.
 
-## 4. Meet Mist
+## 5. Meet Mist
 
 I called the language **Mist** — Mini-app Static Templates. A `.mist` file has
 three parts: TypeScript frontmatter, a JSX-ish template, and optional styles. If
@@ -148,75 +157,6 @@ Page({
 No virtual DOM. No reconciler. `cat.value = c` became `this.__set('cat', c)` at
 **compile time**, and the entire runtime supporting this is **6 KB**.
 
-## 5. How the compiler actually works
-
-I wrote a post about benchmarking a compiler and almost forgot to describe the
-compiler. Here's the shape of it, ~3,600 lines of Rust.
-
-**Two frontends.** The frontmatter is TypeScript, so I parse it with
-[oxc](https://oxc.rs) — a fast Rust JS/TS parser with arena allocation. The
-template isn't JavaScript (it's JSX-ish markup with WXML control flow), so that's
-a hand-rolled recursive-descent parser producing a small `Node` enum:
-`Element / Text / Expr / For / If`.
-
-**No IR, deliberately.** Source → AST walk → edit list → text. Every transform
-here is local and syntax-directed: a mutation becomes a path write, a `.map()`
-becomes a `wx:for`. There's no pass that needs to reorder statements or reason
-about control flow globally, so there's nothing for an IR to buy. That's also why
-it's 3,600 lines and compiles a project in 0.4 s.
-
-**Span-based rewriting instead of codegen** — the decision the whole compiler
-hangs on. I parse with oxc but never print from the AST. Instead a visitor
-collects surgical edits:
-
-```rust
-struct Edit { start: u32, end: u32, text: String }
-```
-
-...which get sorted descending and spliced into the *original source text*. The
-win: your formatting, comments, and TypeScript syntax survive untouched, and I
-don't need a codegen dependency. The cost is real, and it bit me — see the ASI
-bug below. A codegen-based compiler literally cannot emit an unterminated
-statement; a text-splicing one can, and did.
-
-**How reactivity is tracked.** Three analyses feed each other:
-
-1. Scan the template for which names it reads (`{visible.value...}` → `visible`).
-2. Walk the frontmatter AST for mutations; each becomes a path expression
-   (`todos.value[i].done = x` → `` `todos[${i}].done` ``).
-3. Any state the template *doesn't* read gets demoted out of `data` entirely.
-
-You can read the decision in the output. Two mutation strategies, chosen at
-compile time:
-
-```js
-this.__set('filter', 'open')                  // crosses the bridge, path-precise
-;(this._todos[i].done = x, rt.touch(this))    // stays on the logic thread
-```
-
-**One honest disclosure**: derived values are *not* dependency-tracked. Every
-flush recomputes all of them and the runtime diffs the results to decide what to
-send. That's Vue's `computed` without the dependency graph — it costs O(deriveds)
-per update and I'd fix it with real tracking if this were production.
-
-**Where the analysis gives up.** I can model `push` and `arr[i] = x` as paths. I
-cannot model `splice`. So the language rejects it rather than silently falling
-back to sending the whole array — a whitelist over statically-modelable mutation
-forms, with the boundary made visible to the user as a compile error.
-
-### Prior art, before you tell me about it
-
-I'm not first here. Svelte 3's `$$invalidate` is the direct ancestor of my
-`__set` — compile-time assignment interception, with a bitmask where I use a
-string path. Vue's compiled templates already hoist static subtrees and mark
-dynamic bindings with patch flags. Million.js compiles templates into blocks with
-flat dynamic holes, which is very close to this whole thesis. And on *this
-platform*, **Mpx** has done compile-time dependency analysis to minimize `setData`
-for years.
-
-What I haven't seen elsewhere is the next section: not optimizing what crosses the
-bridge, but proving some of it never needs to cross at all.
-
 ## 6. The optimization a runtime can't do
 
 My favourite trick in the whole project, and the one I'd put on a slide.
@@ -246,21 +186,14 @@ data: {                            data: {
 The array still lives in the logic thread. It just never crosses the bridge.
 Initial page payload halved; per-interaction bytes dropped from 49 B to 26 B.
 
-**This is dead-code elimination's data twin.** A classic DCE pass asks "is this
-value ever used?" Mine asks "is this value ever used *by the other thread*?" The
-template is the liveness boundary; `data` is the live-out set; anything not live
-across that boundary gets demoted to a thread-local field.
-
-A runtime provably cannot do this, because it doesn't have the template's
-read-set before the data is committed. That's the whole argument for compilers in
-one example.
+**A runtime can't see this, because "does the template read this?" is a
+compile-time question.** That's the whole argument for compilers in one example.
 
 ## 7. The bugs
 
-**The bug that only appeared on a real device — and the price of span-rewriting.**
-My dead-data optimization emitted mutations as
-`(this._todos[i].done = x, rt.touch(this))` — spliced in on the line after an
-unterminated statement. JavaScript's automatic semicolon insertion
+**The bug that only appeared on a real device.** My dead-data optimization
+emitted mutations as `(this._todos[i].done = x, rt.touch(this))` — on the line
+after an unterminated statement. JavaScript's automatic semicolon insertion
 parsed it as *a function call on the previous line's result*. Every tap threw.
 Tests passed (they had semicolons). Only the real device showed it. The fix is
 one character: emit `;(…)`.
@@ -271,14 +204,29 @@ whitespace-trimming code sliced at a byte index — panicking mid-character. Fou
 by writing a demo app with prices in it. This is the argument for dogfooding in
 one line.
 
-**Is 115 tests enough?** No. Every compilation rule has a test pinning the
-*emitted output* — and the benchmark runs as a test too, so CI fails on a number,
-not a crash. But I have 41 error paths and dedicated tests for maybe a third; no
-fuzzing, no property tests. When I audited coverage for this post I wrote tests
-for a dozen untested paths and every one already passed — which makes them
-regression insurance, not bug discovery. **None of the bugs that actually bit me
-were found by a unit test.** They were found by running the thing on a real
-device.
+**Is 115 tests enough?** Honestly: no, and I want to be precise about what they
+do and don't buy me.
+
+What they cover well: every compilation rule has a test that pins the *emitted
+output* — not "did it compile" but "did it emit exactly this `setData` path."
+That's the layer where a refactor silently degrades performance, and it's why the
+benchmark also runs as a test: if a change makes the compiler emit fatter
+payloads, CI fails on the number, not on a crash.
+
+What they don't cover: I have 41 error paths in the compiler and dedicated tests
+for maybe a third of them. No fuzzing, no property tests, no snapshot suite. When
+I audited coverage while writing this post I found a dozen untested paths —
+unquoted attributes, unknown event modifiers, deeply nested state mutations,
+multibyte text in attributes — wrote tests for all of them, and every single one
+already behaved correctly. That's a comfortable result and a slightly damning
+one: those tests are regression insurance, not bug discovery. The bugs that
+actually bit me were never found by unit tests. They were found by **running the
+thing** — on a real device, with a real app, with real characters in it.
+
+If I were taking this further, the highest-value additions would be property
+tests over the mutation compiler (generate random state paths, assert the emitted
+path round-trips) and a snapshot suite over emitted WXML/JS. Neither would have
+caught the ASI bug. Only the device did.
 
 **Four bugs an adversarial reviewer caught.** After each milestone I had a second
 AI agent audit the work with no context on how I'd written it, specifically
@@ -370,44 +318,6 @@ The payloads say everything:
 three pills' classes from the single `cat` key. Taro's reconciler must send each
 changed node's class string by tree path.
 
-### Where the speed actually comes from
-
-Here's a correction I owe you, because I got it wrong in my own head first.
-
-Looking at the 1000-row list — **26 B vs 67 B** per toggle, **68 ms vs 162 ms**
-tap latency — it's tempting to draw a line between them. Don't. **Forty-one bytes
-cannot cost 94 milliseconds.** At that scale the bridge crossing is a fixed cost
-both frameworks pay once per tap; the marginal cost of 41 extra bytes is
-microseconds.
-
-The latency comes from somewhere better. Per tap, Taro runs:
-
-```js
-setTodos((ts) => ts.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
-```
-
-That allocates **1000 new objects**, invalidates the `useMemo`, re-filters 1000
-items, re-renders 1000 elements, and reconciles 1000 vnodes against the DOM shim —
-all on the logic thread. Mist's compiled equivalent:
-
-```js
-const i = this._todos.findIndex(t => t.id === id)
-;(this._todos[i].done = !this._todos[i].done, rt.touch(this))
-```
-
-A `findIndex` and a boolean flip. Mist still does O(n) comparison work in the
-diff, but it's *comparisons*, not allocations, and there's no vnode tree.
-
-So there are **two independent wins with different causes**: fewer bytes (because
-the compiler sends state instead of rendered output) and lower latency (because
-the compiler deleted the reconciler). Conflating them would be the easy story;
-they're separate, and the second one is the bigger deal.
-
-This also explains the result that embarrassed me: **Taro is faster on a 100-item
-list.** Reconciler cost scales with node count, so below some n it's cheaper than
-my diff bookkeeping, and my advantage disappears. Under a "bytes are everything"
-theory that data point is inexplicable. Under the right theory it's obvious.
-
 ### Everything else
 
 | metric (workload) | **Mist** | Taro |
@@ -415,7 +325,6 @@ theory that data point is inexplicable. Under the right theory it's obvious.
 | bytes/toggle (1000-row list) | **26 B** | 67 B |
 | tap p50 (1000-row list) | **68 ms** | 162 ms |
 | initial page payload (form page) | **366 B** | 1,259 B |
-| filter switch (list changes length) | 32 KB ✗ | smaller ✓ |
 | total package (sum of file bytes) | **19.2 KB** | 302.5 KB (**16×**) |
 | framework runtime | **6.0 KB** | 117.7 KB + 15.3 KB vendors + 94.5 KB bundled React |
 | template scaffolding | per-page WXML (~1–2 KB) | `base.wxml` **56.5 KB** recursive renderer |
@@ -453,11 +362,10 @@ you're carrying.
   for Taro vs 67 ms for Mist. React reconciliation over 100 rows is cheap, and my
   advantage only opens up as data grows. If your app is small, this whole project
   buys you nothing.
-- **Mist has a real architectural weak spot** (it's in the table above). When a
-  derived list changes *length*, my keyed diff can't do per-item writes and falls
-  back to sending the whole array — 32 KB on a filter switch. Taro's tree diff
-  degrades more gracefully. Filtering a list is not an edge case in an expense
-  tracker, so this is a genuine hole, not a footnote.
+- **Mist has a real architectural weak spot.** When a derived list changes
+  *length*, the keyed diff can't do per-item writes and falls back to sending the
+  whole array — 32 KB on a filter switch. Taro's tree diff degrades more
+  gracefully there.
 - **The Taro codebase was shorter** — 248 lines vs my 276.
 - **React's ecosystem is Taro's entire point.** Hooks, libraries, hiring, Stack
   Overflow answers at 3am. Mist has me.
@@ -518,7 +426,6 @@ That was the whole point. The 12× was a bonus.
 
 ---
 
-*Mist is a prototype. The compiler, language spec, demo apps, benchmark harness,
-and the Taro twin used for these comparisons are all at
-**[github.com/TadejPolajnar/mist](https://github.com/TadejPolajnar/mist)** —
-including the eval methodology, so you can tell me where I'm wrong.*
+*Mist is a prototype. The language spec, compiler, demo app, benchmark harness,
+and the Taro twin used for these comparisons are all in the repo — including the
+eval methodology, so you can tell me where I'm wrong.*

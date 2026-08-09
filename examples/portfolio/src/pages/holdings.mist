@@ -1,0 +1,102 @@
+---
+import SectionHeader from '../components/SectionHeader.mist'
+import { market } from '../stores/market.ts'
+import { prefs, setSort } from '../stores/prefs.ts'
+import { derived } from 'mist'
+
+export const config = { navigationBarTitleText: '持仓' }
+
+function yuan(cents) {
+  return (cents / 100).toFixed(2)
+}
+
+function signed(cents) {
+  if (cents >= 0) {
+    return '+' + yuan(cents)
+  }
+  return yuan(cents)
+}
+
+function signedPct(bp) {
+  const s = (bp / 100).toFixed(2) + '%'
+  if (bp >= 0) {
+    return '+' + s
+  }
+  return s
+}
+
+function toneOf(v) {
+  if (v > 0) {
+    return 'up'
+  }
+  if (v < 0) {
+    return 'down'
+  }
+  return 'flat'
+}
+
+const rows = derived(() => {
+  const list = market.value.positions.map(p => {
+    const worth = p.qty * p.price
+    const pnl = worth - p.qty * p.cost
+    let dayBp = 0
+    if (p.prev > 0) {
+      dayBp = Math.round((p.price - p.prev) * 10000 / p.prev)
+    }
+    return {
+      id: p.id,
+      name: p.name,
+      emoji: p.emoji,
+      sector: p.sector,
+      worth,
+      pnl,
+      qtyStr: p.qty + ' 股',
+      worthStr: yuan(worth),
+      pnlStr: signed(pnl),
+      dayStr: signedPct(dayBp),
+      tone: toneOf(pnl),
+      dayTone: toneOf(dayBp),
+    }
+  })
+  if (prefs.value.sort === 'pnl') {
+    return list.slice().sort((a, b) => b.pnl - a.pnl)
+  }
+  return list.slice().sort((a, b) => b.worth - a.worth)
+})
+
+function sortByValue() {
+  setSort('value')
+}
+
+function sortByPnl() {
+  setSort('pnl')
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  <div class="flex gap-2 px-4 pt-4">
+    <div onTap={sortByValue} hover-class="pressed" class:list={['rounded-full px-4 py-1.5', { 'bg-primary': prefs.value.sort === 'value' }, { 'bg-white': prefs.value.sort !== 'value' }]}>
+      <span class:list={['text-body', { 'text-white': prefs.value.sort === 'value' }, { 'text-mute': prefs.value.sort !== 'value' }]}>按市值</span>
+    </div>
+    <div onTap={sortByPnl} hover-class="pressed" class:list={['rounded-full px-4 py-1.5', { 'bg-primary': prefs.value.sort === 'pnl' }, { 'bg-white': prefs.value.sort !== 'pnl' }]}>
+      <span class:list={['text-body', { 'text-white': prefs.value.sort === 'pnl' }, { 'text-mute': prefs.value.sort !== 'pnl' }]}>按盈亏</span>
+    </div>
+  </div>
+
+  <SectionHeader title="全部持仓" />
+  <div class="mx-4 rounded-lg overflow-hidden bg-white">
+    {rows.value.map(r => (
+      <a key={r.id} href={'/pages/position/position?id=' + r.id} hover-class="pressed" class="block border-b border-hairline">
+        <div class="flex items-center justify-between px-4 py-3">
+          <div class="flex flex-col">
+            <span class="text-cell text-ink">{r.emoji} {r.name}</span>
+            <span class="text-caption text-faint">{r.sector} · {r.qtyStr}</span>
+          </div>
+          <div class="flex flex-col items-end">
+            <span class="text-cell text-ink font-semibold">{r.worthStr}</span>
+            <span class:list={['text-caption', { 'text-danger': r.dayTone === 'up' }, { 'text-primary': r.dayTone === 'down' }, { 'text-mute': r.dayTone === 'flat' }]}>{r.dayStr}</span>
+          </div>
+        </div>
+      </a>
+    ))}
+  </div>
+</div>

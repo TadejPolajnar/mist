@@ -1,0 +1,86 @@
+---
+import SectionHeader from '../components/SectionHeader.mist'
+import EmptyState from '../components/EmptyState.mist'
+import Tag from '../components/Tag.mist'
+import { board, addCard, removeCard, moveCol } from '../stores/board.ts'
+import { state, derived } from 'mist'
+
+export const config = { navigationBarTitleText: '待办池' }
+
+const title = state('')
+const tag = state('开发')
+
+const TAGS = ['开发', '设计', '文案', '运营']
+
+const pool = derived(() =>
+  board.value.cards
+    .filter(c => c.col === 'backlog')
+    .sort((a, b) => a.order - b.order)
+    .map(c => ({ id: c.id, title: c.title, tag: c.tag }))
+)
+
+function pickTag(t) {
+  tag.value = t
+}
+
+function submit() {
+  if (title.value.length === 0) {
+    wx.showToast({ title: '请输入卡片标题', icon: 'none' })
+    return
+  }
+  addCard(title.value, tag.value)
+  title.value = ''
+}
+
+function promote(id) {
+  moveCol(id, 1)
+  wx.showToast({ title: '已移入待办', icon: 'success' })
+}
+
+function drop(id) {
+  removeCard(id)
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  <SectionHeader title="新建卡片" />
+  <div class="mx-4 rounded-lg bg-white overflow-hidden">
+    <div class="flex items-center px-4 py-3 border-b border-hairline">
+      <span class="text-cell text-ink w-16">标题</span>
+      <input value:bind={title} placeholder="要做什么？" class="flex-1 text-cell" />
+    </div>
+    <div class="flex items-center gap-2 px-4 py-3">
+      {TAGS.map(t => (
+        <div key={t} onTap={() => pickTag(t)} hover-class="pressed" class:list={['rounded-full px-3 py-1', { 'bg-primary': tag.value === t }, { 'bg-tile': tag.value !== t }]}>
+          <span class:list={['text-caption', { 'text-white': tag.value === t }, { 'text-mute': tag.value !== t }]}>{t}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+  <div onTap={submit} hover-class="pressed" class="mx-4 mt-3 rounded-full bg-primary py-2.5 flex items-center justify-center">
+    <span class="text-cell text-white font-semibold">加入待办池</span>
+  </div>
+
+  <SectionHeader title="待办池" />
+  {pool.value.length === 0 && <EmptyState emoji="🗂️" line="待办池是空的" hint="先添加一张卡片" />}
+
+  {pool.value.length > 0 && (
+    <div class="mx-4 rounded-lg overflow-hidden bg-white">
+      {pool.value.map(c => (
+        <div key={c.id} class="flex items-center justify-between px-4 py-3 border-b border-hairline">
+          <div class="flex flex-col">
+            <span class="text-cell text-ink">{c.title}</span>
+            <Tag text={c.tag} tone="mute" />
+          </div>
+          <div class="flex gap-2">
+            <div onTap={() => drop(c.id)} hover-class="pressed" class="rounded-full border border-line px-4 py-1.5">
+              <span class="text-body text-mute">删除</span>
+            </div>
+            <div onTap={() => promote(c.id)} hover-class="pressed" class="rounded-full border border-primary px-4 py-1.5">
+              <span class="text-body text-primary">移入待办</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>

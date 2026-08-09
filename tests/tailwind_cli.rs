@@ -86,7 +86,7 @@ fn real_cli_end_to_end_when_available() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let result = match mistc::tailwind_cli::generate(&classes) {
+    let result = match mistc::tailwind_cli::generate(&classes, None) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("skipping: tailwind CLI unavailable ({})", e);

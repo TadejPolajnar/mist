@@ -8,7 +8,7 @@ export const ledger = store({
   ],
   nextId: 4,
   budget: 600,
-})
+}, { persist: 'ledger', version: 1 })
 
 export function addTx(title, amount, cat, icon, ts) {
   ledger.value.txs.push({ id: ledger.value.nextId, title, amount, cat, icon, ts })

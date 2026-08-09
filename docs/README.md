@@ -1,8 +1,10 @@
 # Mist documentation
 
+[中文 → README.zh-CN.md](README.zh-CN.md)
+
 Mist is a **component language and compiler for WeChat Mini Programs**: you write
 Astro-flavored single-file `.mist` components; `mistc` (Rust) compiles them to
-plain WXML/WXSS/JS with path-precise `setData` and a ~6 KB runtime.
+plain WXML/WXSS/JS with path-precise `setData` and a ~9 KB runtime.
 
 These docs describe **what is implemented today**. The full language design lives
 in [../SPEC.md](../SPEC.md) — parts of it are still design-only; when the two
@@ -18,15 +20,26 @@ disagree, these docs are right.
 Prerequisites: Rust, Node.js + npm (Tailwind + tests), WeChat DevTools.
 
 ```sh
-git clone https://github.com/TadejPolajnar/mist && cd mist
-cargo build --release          # → target/release/mistc
-cargo install --path .         # optional: puts `mistc` on your PATH
+git clone https://github.com/TadejPolajnar/mist.git && cd mist
+cargo install --path . && cargo install --path crates/mistc-lsp   # mistc + mistc-lsp on PATH
 ```
 
-The examples below assume `mistc` is on your PATH. Without `cargo install`, use
-`cargo run -- build …` or `./target/release/mistc build …` instead.
+Scaffold, build, and iterate:
 
-Create a project:
+```sh
+mistc init my-app              # app.mist + a todo page + project.config.json
+cd my-app
+mistc build src --watch        # rebuilds on every save; ctrl-c to quit
+# WeChat DevTools → Import Project → select my-app/
+```
+
+Editor support ships today: install the extension in `editors/vscode/` for
+`.mist` syntax highlighting plus LSP diagnostics, completions, hover,
+go-to-definition, signature help and rename (see `editors/vscode/README.md`).
+
+`mistc --help` / `mistc build --help` document every flag.
+
+Or create the files by hand:
 
 ```
 my-app/
@@ -67,14 +80,32 @@ function inc() {
 Build and run:
 
 ```sh
-mistc build my-app -o dist
+mistc build my-app -o dist            # one-shot
+mistc build my-app -o dist --watch    # rebuild on save
 # WeChat DevTools → Import Project → folder containing a project.config.json
-# with "miniprogramRoot": "dist/" (or import dist/ directly after adding one)
+# with "miniprogramRoot": "dist/" (mistc init writes one for you)
 ```
 
-Every save: rebuild, then let DevTools recompile. That's the loop.
+For a hand-made project, this minimal `project.config.json` next to `dist/`
+is all DevTools needs:
+
+```json
+{
+  "miniprogramRoot": "dist/",
+  "projectname": "my-app",
+  "appid": "touristappid",
+  "compileType": "miniprogram"
+}
+```
+
+Save → auto-rebuild → let DevTools recompile. That's the loop.
 
 ## What to read next
+
+The full-featured example is [`examples/food`](../examples/food) — a 6-page
+food-ordering app (persisted cart, SKU picker, share hooks, native-styled
+components). Build it with `mistc build examples/food/src -o examples/food/dist`
+and import `examples/food/` in DevTools.
 
 Skim [language.md](language.md) top to bottom — it's short and covers everything
 that exists. Keep [diagnostics.md](diagnostics.md) open the first time the

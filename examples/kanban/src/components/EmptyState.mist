@@ -1,0 +1,10 @@
+---
+import { props } from 'mist'
+
+const { emoji, line, hint } = props({ emoji: '📋', line: '', hint: '' })
+---
+<div class="flex flex-col items-center pt-24 gap-2">
+  <span class="text-5xl">{emoji}</span>
+  <span class="text-cell text-ink">{line}</span>
+  {hint && <span class="text-body text-faint">{hint}</span>}
+</div>

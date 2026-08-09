@@ -2,6 +2,10 @@
 name = "mistc"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Compiler for .mist single-file components (TS frontmatter + JSX-ish template + Tailwind) targeting native WeChat Mini Program code"
+keywords = ["wechat", "miniprogram", "compiler", "wxml", "frontend"]
+categories = ["compilers", "web-programming"]
 
 [lib]
 name = "mistc"
@@ -11,17 +15,21 @@ path = "src/lib.rs"
 name = "mistc"
 path = "src/main.rs"
 
-[features]
-# Exposes the compiler's internal modules (parser, analysis, emitters) for
-# tooling such as editor integrations. Not covered by semver.
-internals = []
-
-[dev-dependencies]
-mistc = { path = ".", features = ["internals"] }
-
 [dependencies]
 oxc_allocator = "0.36"
 oxc_parser = "0.36"
 oxc_ast = "0.36"
 oxc_span = "0.36"
+oxc_syntax = "0.36"
 regex = "1"
+clap = { version = "4", features = ["derive"] }
+notify = "8"
+
+[workspace]
+members = ["crates/mistc-lsp"]
+resolver = "2"
+
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1

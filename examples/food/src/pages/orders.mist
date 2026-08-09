@@ -1,0 +1,81 @@
+---
+import EmptyState from '../components/EmptyState.mist'
+import Tag from '../components/Tag.mist'
+import { orders, markDone } from '../stores/orders.ts'
+import { addLine } from '../stores/cart.ts'
+import { derived, onPullDownRefresh, onTabItemTap } from 'mist'
+
+export const config = { navigationBarTitleText: '我的订单', enablePullDownRefresh: true }
+
+const recent = derived(() => orders.value.list.slice().reverse())
+
+onPullDownRefresh(() => {
+  wx.stopPullDownRefresh()
+})
+
+onTabItemTap((it) => {
+  wx.pageScrollTo({ scrollTop: 0, duration: 200 })
+})
+
+function reorderPast(order) {
+  const found = orders.value.list.find(o => o.order === order)
+  if (found) {
+    for (const l of found.lines) {
+      addLine(l.itemId, l.name, l.emoji, l.unit, l.qty, l.choices)
+    }
+    wx.switchTab({ url: '/pages/cart/cart' })
+  }
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  {recent.value.length === 0 && <EmptyState emoji="🧾" line="还没有订单" hint="下单后在这里查看进度" />}
+
+  {recent.value.map(o => (
+    <div key={o.order} class="mx-4 mt-3 rounded-lg bg-white overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-hairline">
+        <span class="text-cell text-ink font-semibold">订单 #{o.order}</span>
+        {o.status === 'making' && (
+          <div class="flex items-center gap-1.5">
+            <span style="animation: mist-pulse 1.2s ease-in-out infinite" class="w-2 h-2 rounded-full bg-primary"></span>
+            <span class="text-caption text-primary">制作中</span>
+          </div>
+        )}
+        {o.status === 'done' && <Tag text="已完成" tone="mute" />}
+      </div>
+      {o.status === 'making' && (
+        <div class="flex items-center gap-2 px-4 py-2 border-b border-hairline">
+          <span class="text-caption text-primary">下单 ✓</span>
+          <span class="flex-1 h-px bg-primary"></span>
+          <span class="text-caption text-primary font-semibold">制作中</span>
+          <span class="flex-1 h-px bg-hairline"></span>
+          <span class="text-caption text-faint">待取餐</span>
+        </div>
+      )}
+      {o.lines.map(l => (
+        <div key={l.line} class="flex items-center justify-between px-4 py-2">
+          <span class="text-body text-ink">{l.emoji} {l.name} ×{l.qty}</span>
+          <span class="text-body text-mute">¥{l.unit * l.qty}</span>
+        </div>
+      ))}
+      {o.discount > 0 && (
+        <div class="flex items-center justify-between px-4 py-2">
+          <span class="text-body text-mute">满 30 减 3</span>
+          <span class="text-body text-primary">-¥{o.discount}</span>
+        </div>
+      )}
+      <div class="flex items-center justify-between px-4 py-3 border-t border-hairline">
+        <span class="text-body text-mute">取餐 {o.pickup} · 合计 ¥{o.total}</span>
+        <div class="flex gap-2">
+          {o.status === 'making' && (
+            <div onTap={() => markDone(o.order)} hover-class="pressed" class="rounded-full border border-line px-4 py-1.5">
+              <span class="text-body text-ink">完成</span>
+            </div>
+          )}
+          <div onTap={() => reorderPast(o.order)} hover-class="pressed" class="rounded-full border border-primary px-4 py-1.5">
+            <span class="text-body text-primary">再来一单</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>

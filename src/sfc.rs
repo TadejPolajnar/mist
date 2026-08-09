@@ -2,7 +2,9 @@ pub struct Sfc<'a> {
     pub frontmatter: &'a str,
     pub template: &'a str,
     pub style: Option<&'a str>,
+    /// 1-based line in the source file where the frontmatter body starts
     pub frontmatter_line: usize,
+    /// 1-based line in the source file where the (trimmed) template starts
     pub template_line: usize,
 }
 

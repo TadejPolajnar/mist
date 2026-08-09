@@ -1,0 +1,107 @@
+---
+import QtyStepper from '../components/QtyStepper.mist'
+import EmptyState from '../components/EmptyState.mist'
+import Cell from '../components/Cell.mist'
+import SectionHeader from '../components/SectionHeader.mist'
+import { cart, setQty, removeLine, clearCart } from '../stores/cart.ts'
+import { derived } from 'mist'
+
+export const config = { navigationBarTitleText: '购物车' }
+
+const subtotal = derived(() => cart.value.lines.reduce((s, l) => s + l.unit * l.qty, 0))
+const discount = derived(() => subtotal.value >= 30 ? 3 : 0)
+const payable = derived(() => subtotal.value - discount.value)
+const itemCount = derived(() => cart.value.lines.reduce((s, l) => s + l.qty, 0))
+const gap = derived(() => subtotal.value >= 30 ? 0 : 30 - subtotal.value)
+
+function incLine(line) {
+  const found = cart.value.lines.find(x => x.line === line)
+  if (found) {
+    setQty(line, found.qty + 1)
+  }
+}
+
+function decLine(line) {
+  const found = cart.value.lines.find(x => x.line === line)
+  if (found) {
+    setQty(line, found.qty - 1)
+  }
+}
+
+function goCheckout() {
+  if (cart.value.lines.length > 0) {
+    wx.navigateTo({ url: '/packages/order/pages/checkout/checkout' })
+  }
+}
+
+function confirmClear() {
+  wx.showModal({
+    title: '清空购物车？',
+    success: (res) => {
+      if (res.confirm) {
+        clearCart()
+      }
+    },
+  })
+}
+---
+<div class="min-h-screen bg-page pb-28">
+  {cart.value.lines.length === 0 && <EmptyState emoji="🛒" line="购物车是空的" hint="去点一杯吧" />}
+
+  {cart.value.lines.length > 0 && (
+    <div class="flex items-center justify-between px-4 pt-3 pb-1">
+      <span class="text-body text-mute">共 {itemCount.value} 件</span>
+      <div onTap={confirmClear} hover-class="pressed">
+        <span class="text-caption text-mute">清空</span>
+      </div>
+    </div>
+  )}
+
+  {cart.value.lines.map(l => (
+    <div key={l.line} class="flex items-center gap-3 bg-white px-4 py-3 border-b border-hairline">
+      <div class="w-12 h-12 rounded-xl bg-page flex items-center justify-center">
+        <span class="text-2xl">{l.emoji}</span>
+      </div>
+      <div class="flex flex-col flex-1">
+        <span class="text-cell text-ink">{l.name}</span>
+        {l.choices && <span class="text-caption text-faint">{l.choices}</span>}
+        <span class="text-body text-danger font-semibold">¥{l.unit}</span>
+      </div>
+      <QtyStepper qty={l.qty} tag={l.line} onInc={incLine} onDec={decLine} />
+      <div onTap={() => removeLine(l.line)} hover-class="pressed" class="pl-2">
+        <span class="text-body text-faint">✕</span>
+      </div>
+    </div>
+  ))}
+
+  {cart.value.lines.length > 0 && (
+    <div class="mt-3">
+      {gap.value > 0 && (
+        <div class="mx-4 mt-3 rounded-lg bg-nudge px-4 py-2.5">
+          <span class="text-caption text-nudge-ink">再买 ¥{gap.value} 立减 ¥3 🎉</span>
+        </div>
+      )}
+      {gap.value === 0 && (
+        <div class="mx-4 mt-3 rounded-lg bg-primary/10 px-4 py-2.5">
+          <span class="text-caption text-primary">已享满 30 减 3 ✓</span>
+        </div>
+      )}
+      <SectionHeader title="结算明细" />
+      <div class="mx-4 rounded-lg overflow-hidden">
+        <Cell label="小计" value={'¥' + subtotal.value} />
+        <Cell label="满 30 减 3" value={'-¥' + discount.value} />
+        <Cell label="合计" value={'¥' + payable.value} />
+      </div>
+    </div>
+  )}
+
+  <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-hairline px-4 py-3 pb-safe flex items-center justify-between">
+    <div class="flex items-baseline gap-1">
+      <span class="text-body text-mute">合计</span>
+      <span class="text-stat text-danger font-semibold">¥{payable.value}</span>
+    </div>
+    <div onTap={goCheckout} hover-class="pressed" class:list={['rounded-full px-8 py-2.5', { 'bg-primary': cart.value.lines.length > 0 }, { 'bg-primary-soft': cart.value.lines.length === 0 }]}>
+      <span class="text-cell text-white font-semibold">去结算</span>
+    </div>
+  </div>
+</div>

@@ -24,6 +24,12 @@ and drives the identical state change (category pick) 30 times, one per tick.
 | max payload | 17 B | 186 B | 11× |
 | total over 30 | 440 B | 5,394 B | 12× |
 
+> Reproducibility caveat: `mist-pill/`'s `.mist` source was never committed, and
+> `dist/` directories are gitignored — so the 15 B figure survives only in this
+> table and in local working copies; a fresh clone cannot rebuild or re-measure
+> it. The fully source-reproducible on-device number is the list app's 26 B vs
+> 67 B (`mist-app/`, which has committed `src/`).
+
 **What each framework actually sends:**
 
 ```jsonc

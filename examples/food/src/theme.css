@@ -1,0 +1,32 @@
+@theme {
+  --color-primary: #07c160;
+  --color-primary-deep: #059048;
+  --color-primary-soft: #c8e8d4;
+  --color-danger: #fa5151;
+  --color-amber: #ff9d2e;
+  --color-page: #f7f7f7;
+  --color-ink: #1a1a1a;
+  --color-mute: #888888;
+  --color-faint: #b2b2b2;
+  --color-disabled: #c8c8c8;
+  --color-hairline: #ececec;
+  --color-line: #dcdcdc;
+  --color-tile: #f2f2f2;
+  --color-tile-tea: #e8f8ef;
+  --color-tile-fruit: #fdeef0;
+  --color-tile-coffee: #f3ece4;
+  --color-tile-snack: #fff4e0;
+  --color-nudge: #fff7e6;
+  --color-nudge-ink: #b26205;
+  --text-caption: 12px;
+  --text-body: 14px;
+  --text-cell: 17px;
+  --text-stat: 20px;
+  --text-emoji-sm: 28px;
+  --text-emoji-lg: 56px;
+  --text-emoji-xl: 84px;
+  --shadow-cta: 0 4px 12px rgb(7 193 96 / 0.3);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}

@@ -1,12 +1,41 @@
 # Diagnostics
 
-Errors carry a code and a fix; M1004 includes file line:col and M1010 the line
-(other codes report the file path only). Warnings (`M1002`, `M1006`) go to stderr and never fail the build.
+Errors carry a code and a fix; M1001, M1004, M1007, M1011, M1013, M1017 and
+M1021 include file line:col and M1010 the line (other codes report the file
+path only; M1015 reports line:col for import-shape errors and file path only
+for the `pluginComponents` value/collision checks). Warnings (`M1002`,
+`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`) go to stderr and
+never fail the build. M1020 is the exception among warnings above in name
+only — it is a warning when the tab bar file exists without the config flag,
+but an error when the flag is set without the file (see below).
+
+## M1001 — aliased state mutation
+
+Writing state through a local alias compiles to nothing reactive — the write
+happens in memory but no `setData` is emitted.
+
+```ts
+const t = todos.value[0]
+t.done = true                 // ✗ M1001
+todos.value[0].done = true    // ✓ path-precise setData
+```
+
+Applies to member/index writes, `++`/`--`, and mutating array calls
+(`push` etc.) through an alias of a `state()` or `store()` value — including
+`for...of` loop variables and callback params of `forEach`/`map`/`filter`/
+`find`/`some`/`every`/`flatMap` over state paths. Read-only aliases are fine.
+Tracking is scope-aware: a shadowing param or local only suppresses the check
+inside its own function, and rebinding an alias (`t = other`) drops it.
+Copies (`.slice()`, spread) are never aliases. Writes the compiler cannot see
+(aliases passed into helpers) remain your responsibility: always write
+through the full `x.value…` path.
 
 ## M1002 — unknown class (warning)
 
-A template class produced no CSS. Usually a typo, a custom class you style in
-`<style>` (fine — ignore), or a Tailwind utility that doesn't exist.
+A template class produced no CSS. Usually a typo or a Tailwind utility that
+doesn't exist. Classes defined in a user `<style>` block — a unit's own block
+or `app.mist`'s global block — are harvested from the selector text and never
+warn, so hand-written CSS classes are fine.
 
 ## M1003 — invalid list key
 
@@ -48,10 +77,241 @@ combinators like `space-x-*`, `@container`). The rule was removed. Fixes:
 `space-x-* → gap-*`; interaction states → WeChat's `hover-class`; container
 queries → `@media`.
 
+## M1007 — reactive value used without `.value`
+
+State, derived and store boxes are read and written through `.value` — a bare
+reference compiles to nothing reactive, so it is rejected. Checked in
+frontmatter (with line:col) and in template expressions, including inline
+event handlers.
+
+```ts
+const count = state(0)
+count++            // ✗ M1007
+count.value++      // ✓
+```
+
+```jsx
+<span>{count}</span>          // ✗ M1007 — renders nothing
+<span>{count.value}</span>    // ✓
+<input value:bind={text} />   // ✓ value:bind takes the box by design
+```
+
+Locals that shadow a reactive name (e.g. a parameter called `count`) are not
+flagged within their own scope.
+
+## M1008 — keyless list (warning)
+
+A `.map()` over a reactive array without `key=` disables keyed field-level
+diffing: every update resends the whole array instead of per-item paths.
+
+```jsx
+{items.value.map(t => <li>{t.text}</li>)}            // ⚠ M1008 — whole-array writes
+{items.value.map(t => <li key={t.id}>{t.text}</li>)} // ✓ path-precise
+```
+
+## M1009 — call in a nested loop
+
+Calls inside nested loops would be hoisted into a page-scope derived that
+captures the outer loop variable out of scope. Precompute in frontmatter
+instead — e.g. a derived that maps the nested items to display-ready values.
+
 ## M1010 — template syntax error
 
 Mismatched/unclosed tags and malformed attribute names — reported with the file
 line. Common cause: a self-closing native tag written without `/>`.
+
+## M1011 — invalid `'mist'` import
+
+Named imports from `'mist'` are validated against the real export list —
+`state`, `derived`, `store`, `props`, and the lifecycle hooks. Unknown names
+(usually a WeChat hook mist doesn't support, or a typo), aliased imports
+(`state as s`), and default/namespace imports all error at compile time
+instead of silently breaking at page load.
+
+## M1013 — lifecycle hook in the wrong unit kind
+
+Each hook belongs to one unit kind. Pages reject `onPageShow`/`onPageHide`
+(use `onShow`/`onHide`) and reject component-only hooks (`onCreate`, `onMove`).
+Components reject page-only hooks (`onPullDownRefresh`, `onReachBottom`,
+`onPageScroll`, `onTabItemTap`, share/favorites hooks, `onRouteDone`,
+`onSaveExitState`) — WeChat never delivers them to components. `app.mist`
+accepts only `onLaunch`, `onShow`, `onHide`, `onError`, `onPageNotFound`,
+`onUnhandledRejection`, `onThemeChange`. `onResize` works in both pages and
+components (→ `pageLifetimes.resize`).
+
+## M1017 — state write inside `onCreate`
+
+`onCreate` maps to WeChat's `created`, which runs **before** `properties` and
+`data` exist on the component instance — a `setData`-backed write there
+targets an object that isn't there yet. Use `onCreate` only to seed
+non-reactive instance fields (`this._foo = ...` outside state); move reactive
+writes to `onAttach`.
+
+```ts
+import { state, onCreate } from 'mist'
+const n = state(0)
+onCreate(() => { n.value = 1 })          // ✗ M1017 — created runs before data exists
+onCreate(() => { console.log(n.value) }) // ✓ reads are fine
+```
+
+## M1012 — config feature without its handler (warning)
+
+`enablePullDownRefresh: true` without `onPullDownRefresh`, or
+`onReachBottomDistance` without `onReachBottom`: the config passes through but
+nothing can respond — e.g. the refresh spinner never stops. Declare the hook
+or drop the config key.
+
+## M1014 — config key collides with a generated field
+
+Unit JSON is assembled by splicing the user's `config` object next to
+compiler-generated fields — a duplicate key would silently win or lose,
+depending on WeChat's parser, with no diagnostic. mistc rejects the
+collision instead:
+
+- `app.mist`: `pages` (generated from `src/pages/`), `subPackages`
+  (generated from `src/packages/`), and `sitemapLocation` (always
+  `sitemap.json`).
+- Components: `component` (mistc marks every unit under `src/components/`
+  as a component automatically).
+- Pages and components: `usingComponents`, **only when the unit also
+  imports a `.mist` component** — mistc registers those imports
+  automatically and does not merge them with a manual entry.
+
+A manual `usingComponents` with **no** `.mist` component imports still
+works — it is the supported way to hand-register native/third-party
+components mistc cannot discover on its own.
+
+## M1015 — invalid plugin specifier or component
+
+`plugin://<name>` imports and `config.pluginComponents` entries are validated:
+
+- Only a default import of the whole plugin is supported —
+  `import { x } from 'plugin://calendar'` errors.
+- The plugin name must be non-empty and alphanumeric/`-`/`_` —
+  `import p from 'plugin://'` errors.
+- `config.pluginComponents` values must be string literals starting with
+  `'plugin://'`.
+- A `pluginComponents` name colliding with an imported `.mist` component's
+  tag errors.
+
+```ts
+import cal from 'plugin://calendar'          // ✓
+import { x } from 'plugin://calendar'        // ✗ M1015 — named import
+import p from 'plugin://'                    // ✗ M1015 — empty name
+```
+
+## M1016 — pages in a subdirectory are not compiled (warning)
+
+Pages must sit directly in `src/pages/`, or in `src/packages/<pkg>/pages/`
+as a subpackage. A `.mist` file anywhere else under `pages/` is silently
+skipped — this warning tells you where.
+
+```
+src/pages/sub/extra.mist    // ✗ M1016 — dropped, not a page or subpackage
+src/pages/index.mist        // ✓ main package page
+src/packages/shop/pages/cart.mist   // ✓ subpackage page
+```
+
+## M1018 — box-styled child inside a `text`-mapped element (warning)
+
+Native `text` renders inline-only and ignores box styling (padding, flex,
+etc). An element that maps to `text` (`span`, or a literal `text` tag) may
+contain only text/`{expr}` children or other `text`-mapped elements —
+anything else (a `view`, an `image`, …) compiles fine but silently no-ops its
+box styles.
+
+```jsx
+<span class="p-4 flex"><div>x</div></span>   // ⚠ M1018 — div's padding/flex ignored
+<span>hi {name.value}</span>                 // ✓
+<span><span>nested</span></span>             // ✓
+```
+
+The check recurses through `wx:if`/`wx:else` and list children at the same
+position, so a conditional or looped box element inside a `span` still warns.
+
+## M1019 — unknown tag (warning)
+
+A tag that is neither a native WeChat component, a web alias (`div`, `span`,
+`img`, …), nor a registered `.mist` component/plugin component/manual
+`usingComponents` entry compiles fine but renders as nothing — WeChat drops
+unrecognized tags silently, with no error of its own.
+
+```jsx
+<scroll-veiw>x</scroll-veiw>   // ⚠ M1019 — did you mean <scroll-view>?
+<swipper />                    // ⚠ M1019 — did you mean <swiper>?
+<scroll-view>x</scroll-view>   // ✓ native
+```
+
+The suggestion only appears when a native tag or web alias is within edit
+distance 2; otherwise the warning omits the "did you mean" clause. Each
+distinct unknown tag warns once per unit, no matter how many times it
+appears.
+
+## M1020 — custom tab bar file/config mismatch
+
+WeChat requires a custom tab bar component at the fixed dist path
+`custom-tab-bar/index.*`. mistc compiles `src/custom-tab-bar.mist` there when
+present. The file and the `tabBar.custom: true` config flag must agree:
+
+```ts
+// tabBar.custom: true, but src/custom-tab-bar.mist is missing
+export const config = { tabBar: { custom: true, list: [...] } }
+// ✗ M1020 (error) — WeChat would render a blank tab bar
+```
+
+```ts
+// src/custom-tab-bar.mist exists, but config lacks tabBar.custom: true
+export const config = { tabBar: { list: [...] } }
+// ⚠ M1020 (warning) — WeChat ignores the file and renders the built-in tab bar; build still succeeds
+```
+
+Set `tabBar: { custom: true, ... }` in `app.mist` config whenever
+`src/custom-tab-bar.mist` exists, and remove the file (or the flag) otherwise.
+
+If the tag is intentional — a third-party component registered only through
+`config.usingComponents`, or one you don't want mistc to know about yet —
+list it in `config.customTags` to suppress the warning:
+
+```ts
+export const config = { customTags: ['my-web-component'] }
+```
+
+`customTags` entries must contain only letters, digits, `-` and `_`; the key
+is consumed at compile time and never reaches the emitted `.json`.
+
+## M1021 — unknown navigate() route
+
+`navigate(route)`, `navigate.replace(route)` and `navigate.switchTab(route)`
+require a literal route string, because the compiler checks it against the
+compiled page list. An identifier, a template literal with interpolation, or
+string concatenation all fail with the same message:
+
+```ts
+navigate('/pages/index/index')          // ✓ literal
+navigate(`/pages/index/index`)          // ✓ literal (no interpolation)
+navigate(someVar)                       // ✗ M1021 — not a literal
+navigate(`/pages/${id.value}`)          // ✗ M1021 — not a literal
+navigate('/pages/' + id.value)          // ✗ M1021 — not a literal
+```
+
+A literal route that isn't in the compiled page list also fails, with a
+suggestion when a known route is within edit distance 3:
+
+```ts
+navigate('/pages/abot/abot')
+// ✗ M1021: unknown route '/pages/abot/abot' — not in the compiled page
+//   list; did you mean '/pages/about/about'?
+```
+
+`navigate.switchTab(route)` additionally requires the route to be a tab-bar
+page when `app.mist`'s `config.tabBar.list[].pagePath` is statically
+extractable (every entry a plain string literal); otherwise it falls back to
+the plain route-list check above.
+
+Route validation only runs for directory builds (`mistc build <dir>`),
+because only those have a full page list — `mistc build <file>` (flat/
+single-entry builds) compiles `navigate()` calls without checking the route
+against anything.
 
 ## Un-coded errors worth knowing
 
@@ -64,11 +324,14 @@ line. Common cause: a self-closing native tag written without `/>`.
 - **"config must be a static object literal"** — no function calls or variables
   inside `export const config`.
 - **store output path collision** — two store files with the same stem; rename one.
+- **"TS enum … is not supported"** — enums are runtime constructs; use a const
+  object or a string-literal union.
+- **"npm packages are not supported"** — only `mist`, relative store modules
+  and `.mist` components can be imported.
 
-## Silent hazard (until M1001 ships)
+## Silent hazard — aliased writes M1001 cannot see
 
-Aliasing state into a local and mutating through it —
-`const t = todos.value[0]; t.done = true` — compiles to nothing reactive: the
-write happens in memory but no `setData` is emitted. Always write through the
-full path: `todos.value[0].done = true`. The `M1001` compile-time check for
-this is on the roadmap.
+M1001 catches direct writes through single-assignment local aliases. Writes it
+cannot trace — an alias passed into a helper that mutates its parameter, or a
+mutation inside a callback over a derived copy — still compile to nothing
+reactive. Always write through the full `x.value…` path.

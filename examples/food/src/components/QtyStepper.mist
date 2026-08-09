@@ -1,0 +1,14 @@
+---
+import { props } from 'mist'
+
+const { qty, tag, onInc, onDec } = props({ qty: 1, tag: 0 })
+---
+<div class="flex items-center gap-2">
+  <div class:list={['w-7 h-7 rounded-full border border-line flex items-center justify-center', { 'opacity-30': qty === 1 }]} hover-class="pressed" onTap={() => onDec(tag)}>
+    <span class="text-cell text-ink">−</span>
+  </div>
+  <span class="text-cell text-ink min-w-6 text-center">{qty}</span>
+  <div class="w-7 h-7 rounded-full bg-primary flex items-center justify-center" hover-class="pressed" onTap={() => onInc(tag)}>
+    <span class="text-cell text-white">+</span>
+  </div>
+</div>

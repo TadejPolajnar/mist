@@ -31,6 +31,15 @@ Declared in `stores/*.ts` as `export const cart = store({...})`. Same read/write
 contract as `state`. Every importing page/component gets a subscribed mirror
 with path-precise batched updates.
 
+Optional persistence: `store(init, { persist: 'key', version?: 1, migrate? })`
+hydrates from `wx.getStorageSync('key')` at creation and writes back debounced
+(~200 ms) on mutation, wrapped in a `{ v, data }` envelope. When the saved
+version differs, `migrate(oldData, oldVersion)` produces the new shape (no
+`migrate` ⇒ saved data is ignored and `init` is used). Storage errors are
+swallowed — persistence is best-effort. Mind wx storage quotas (~1 MB/key).
+A pending debounced write flushes on `wx.onAppHide`; a hard kill inside the
+200 ms window can still lose the last mutation.
+
 ### Lifecycle hooks
 
 Call at frontmatter top level with an arrow: `onLoad(({ id }) => { ... })`.
@@ -44,6 +53,11 @@ Async arrows supported.
 | `onUnload` | ✓ (store-unbind injected) | — | — |
 | `onAttach` / `onDetach` | — | `attached` / `detached` (init/bind injected) | — |
 | `onLaunch` | — | — | ✓ |
+| `onPullDownRefresh` / `onReachBottom` | ✓ | — | — |
+| `onPageScroll` / `onTabItemTap` | ✓ | — | — |
+| `onResize` | ✓ | `pageLifetimes.resize` | — |
+| `onPageShow` / `onPageHide` | — | `pageLifetimes.show` / `.hide` | — |
+| `onShareAppMessage` / `onShareTimeline` / `onAddToFavorites` | ✓ (callback's return value is the share config; expression bodies auto-return) | — | — |
 
 ### `value:bind` (inputs)
 
@@ -53,10 +67,11 @@ logic-side mirror and recomputes deriveds through the normal batch.
 
 ### Hoisted expressions
 
-Template bindings containing function calls compile to generated deriveds:
-page scope → `_h<i>` keys; inside loops → the list is rewritten to `_hl<i>`
-whose items carry computed `_c<i>` fields (keyed diffing preserved). Names are
-stable and visible in emitted JS for debugging.
+Template bindings WXML can't evaluate — function calls, template literals,
+optional chaining — compile to generated deriveds: page scope → `_h<i>` keys;
+inside loops → the list is rewritten to `_hl<i>` whose items carry computed
+`_c<i>` fields (keyed diffing preserved). Names are stable and visible in
+emitted JS for debugging.
 
 ### `export const config = { ... }`
 
@@ -66,8 +81,13 @@ Static object literal → the unit's `.json` (page window config, or app-level
 ## CLI
 
 ```
-mistc build <src-dir | entry.mist> [-o <outdir>] [--app]
+mistc init <name>
+mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
 ```
+
+- **`init`** → scaffolds `<name>/` (app.mist, a todo page, project.config.json,
+  `mist.d.ts` + `tsconfig.json` + `package.json` for editor types).
+- **`--watch`** → rebuilds on every `.mist`/`.ts` save (debounced).
 
 - **Directory** → project build. Requires `<dir>/app.mist` and
   `<dir>/pages/*.mist` (index becomes the launch page). Components and stores
@@ -82,7 +102,7 @@ mistc build <src-dir | entry.mist> [-o <outdir>] [--app]
 ```
 dist/
 ├── app.js  app.json  app.wxss  sitemap.json
-├── mist-rt.js                  # the runtime (~6 KB)
+├── mist-rt.js                  # the runtime (~9.6 KB)
 ├── tw-shared.wxss              # tailwind utilities (imported by every unit)
 ├── tw-theme.wxss               # page{} theme vars (imported by pages only)
 ├── pages/<name>/<name>.{js,wxml,wxss,json}
@@ -100,36 +120,18 @@ You never import this — generated code does. For debugging, its surface:
 
 - `set(page, path, value)` / `touch(page)` / `flush(page)` — batch a write / a
   derive-only pass / the once-per-microtask flush that issues one `setData`.
+  A rejected `setData` (e.g. payload too large) rolls the page's local mirror
+  back, and store-bound pages then reseed their mirrors from current store
+  values — a failed batch never leaves a page desynced from its stores.
 - `init(page)` — first-render derive seed (called from generated `onLoad`/`attached`).
 - `applyPath(obj, path, value)` — path-string writer used by the batcher.
-- `derive(page, out, name, key, fn)` — recompute one derived with keyed
-  field-level diffing against snapshots.
+- `derive(page, out, name, key, compute, deps)` — recompute one derived with
+  keyed field-level diffing against snapshots; `deps` drives per-derived
+  dirty-bit skipping (null ⇒ always recompute).
 - `store(init)`, `bindStores`, `unbindStores` — shared-state boxes and page
   subscription glue.
 - `observePerf()` / `perfEntries` — `wx.getPerformance` observer installed by
   generated `app.js`; entries readable via `getApp().__perf`.
-
-## Using mistc as a library
-
-The stable surface is small and semver-covered:
-
-```rust
-mistc::compile(source: &str) -> Result<Output, String>
-mistc::compile_unit(source: &str, is_page: bool) -> Result<Unit, String>
-mistc::compile_project(entry: &Path) -> Result<Project, String>       // single entry
-mistc::compile_project_dir(src: &Path) -> Result<Project, String>     // app.mist + pages/
-mistc::RUNTIME: &str                                                  // mist-rt.js source
-// types: Output, Unit, Project, CompiledFile, AppShell, Layout
-```
-
-The compiler's internal modules (`frontmatter`, `template`, `wxml`, `sfc`,
-`tailwind`, `tailwind_cli`) are **private by default**. Tooling that needs them —
-an LSP, an editor plugin — can opt in, with the understanding that they are not
-covered by semver:
-
-```toml
-mistc = { version = "0.1", features = ["internals"] }
-```
 
 ## Benchmarking your own app
 

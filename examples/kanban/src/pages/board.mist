@@ -1,0 +1,89 @@
+---
+import KanbanCard from '../components/KanbanCard.mist'
+import { board, moveVert, moveCol } from '../stores/board.ts'
+import { team } from '../stores/team.ts'
+import { prefs } from '../stores/prefs.ts'
+import { derived } from 'mist'
+
+export const config = { navigationBarTitleText: '看板' }
+
+const COLS = [
+  { id: 'todo', name: '待办' },
+  { id: 'doing', name: '进行中' },
+  { id: 'review', name: '评审' },
+  { id: 'done', name: '完成' },
+]
+
+function whoOf(assignee) {
+  const m = team.value.members.find(x => x.id === assignee)
+  if (m) {
+    return m.avatar + ' ' + m.name
+  }
+  return '未分配'
+}
+
+const grouped = derived(() =>
+  COLS.map((col, ci) => {
+    const cards = board.value.cards
+      .filter(c => c.col === col.id)
+      .sort((a, b) => a.order - b.order)
+      .map((c, idx, arr) => ({
+        id: c.id,
+        title: c.title,
+        tag: c.tag,
+        who: whoOf(c.assignee),
+        first: idx === 0,
+        last: idx === arr.length - 1,
+        canLeft: ci > 0,
+        canRight: ci < COLS.length - 1,
+      }))
+    return {
+      id: col.id,
+      name: col.name,
+      count: cards.length,
+      over: col.id === 'doing' && cards.length > prefs.value.wipLimit,
+      cards,
+    }
+  })
+)
+
+function up(id) {
+  moveVert(id, -1)
+}
+
+function down(id) {
+  moveVert(id, 1)
+}
+
+function left(id) {
+  moveCol(id, -1)
+}
+
+function right(id) {
+  moveCol(id, 1)
+}
+
+function open(id) {
+  wx.navigateTo({ url: '/pages/card/card?id=' + id })
+}
+---
+<scroll-view scroll-x class="h-screen bg-page">
+  <div class="flex gap-3 px-4 py-4">
+    {grouped.value.map(col => (
+      <div key={col.id} class="w-64 shrink-0">
+        <div class="flex items-center justify-between px-1 pb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-body text-ink font-semibold">{col.name}</span>
+            <span class="text-caption text-faint">{col.count}</span>
+          </div>
+          {col.over && <span class="text-caption text-danger">超出在制限制</span>}
+        </div>
+        <div class:list={['rounded-lg p-2 min-h-24', { 'bg-danger/5': col.over }, { 'bg-tile': !col.over }]}>
+          {col.cards.map(c => (
+            <KanbanCard key={c.id} card={c} onUp={up} onDown={down} onLeft={left} onRight={right} onOpen={open} />
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</scroll-view>

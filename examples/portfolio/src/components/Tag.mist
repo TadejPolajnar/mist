@@ -1,0 +1,6 @@
+---
+import { props } from 'mist'
+
+const { text, tone } = props({ text: '', tone: 'ok' })
+---
+<span class:list={['inline-block px-2 py-0.5 rounded-full text-caption', { 'bg-primary/10 text-primary': tone === 'ok' }, { 'bg-danger/10 text-danger': tone === 'warn' }, { 'bg-tile text-mute': tone === 'mute' }]}>{text}</span>

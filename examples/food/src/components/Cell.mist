@@ -1,0 +1,12 @@
+---
+import { props } from 'mist'
+
+const { label, value, hint } = props({ label: '', value: '', hint: '' })
+---
+<div class="flex items-center justify-between bg-white px-4 py-3 border-b border-hairline">
+  <div class="flex flex-col">
+    <span class="text-cell text-ink">{label}</span>
+    {hint && <span class="text-caption text-faint">{hint}</span>}
+  </div>
+  <span class="text-body text-mute">{value}</span>
+</div>

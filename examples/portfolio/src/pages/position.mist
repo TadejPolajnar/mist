@@ -1,0 +1,118 @@
+---
+import Cell from '../components/Cell.mist'
+import SectionHeader from '../components/SectionHeader.mist'
+import EmptyState from '../components/EmptyState.mist'
+import Tag from '../components/Tag.mist'
+import { market, trade } from '../stores/market.ts'
+import { state, derived, onLoad } from 'mist'
+
+export const config = { navigationBarTitleText: '持仓详情' }
+
+const id = state('')
+
+function yuan(cents) {
+  return (cents / 100).toFixed(2)
+}
+
+function signed(cents) {
+  if (cents >= 0) {
+    return '+' + yuan(cents)
+  }
+  return yuan(cents)
+}
+
+function signedPct(bp) {
+  const s = (bp / 100).toFixed(2) + '%'
+  if (bp >= 0) {
+    return '+' + s
+  }
+  return s
+}
+
+function toneOf(v) {
+  if (v > 0) {
+    return 'warn'
+  }
+  if (v < 0) {
+    return 'ok'
+  }
+  return 'mute'
+}
+
+const pos = derived(() => {
+  const p = market.value.positions.find(x => x.id === id.value)
+  if (!p) {
+    return null
+  }
+  const worth = p.qty * p.price
+  const spent = p.qty * p.cost
+  const pnl = worth - spent
+  let dayBp = 0
+  if (p.prev > 0) {
+    dayBp = Math.round((p.price - p.prev) * 10000 / p.prev)
+  }
+  return {
+    id: p.id,
+    name: p.name,
+    emoji: p.emoji,
+    sector: p.sector,
+    qtyStr: p.qty + ' 股',
+    priceStr: yuan(p.price),
+    costStr: yuan(p.cost),
+    worthStr: yuan(worth),
+    pnlStr: signed(pnl),
+    dayStr: signedPct(dayBp),
+    dayTone: toneOf(dayBp),
+    canSell: p.qty > 0,
+  }
+})
+
+const missing = derived(() => id.value !== '' && !pos.value)
+
+onLoad((q) => {
+  id.value = q.id || 'none'
+})
+
+function buyOne() {
+  trade(id.value, 1)
+}
+
+function sellOne() {
+  if (pos.value && pos.value.canSell) {
+    trade(id.value, -1)
+  }
+}
+---
+<div class="min-h-screen bg-page pb-28">
+  {missing.value && <EmptyState emoji="🔍" line="未找到该持仓" hint="它可能已被清仓" />}
+
+  {pos.value && (
+    <div>
+      <div class="mx-4 mt-4 rounded-lg bg-white px-4 py-4 flex items-center justify-between">
+        <div class="flex flex-col">
+          <span class="text-stat text-ink font-semibold">{pos.value.emoji} {pos.value.name}</span>
+          <span class="text-caption text-faint">{pos.value.sector}</span>
+        </div>
+        <Tag text={pos.value.dayStr} tone={pos.value.dayTone} />
+      </div>
+
+      <SectionHeader title="持仓数据" />
+      <div class="mx-4 rounded-lg overflow-hidden">
+        <Cell label="现价" value={pos.value.priceStr} hint="" />
+        <Cell label="成本" value={pos.value.costStr} hint="" />
+        <Cell label="数量" value={pos.value.qtyStr} hint="" />
+        <Cell label="市值" value={pos.value.worthStr} hint="" />
+        <Cell label="浮动盈亏" value={pos.value.pnlStr} hint="" />
+      </div>
+
+      <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-hairline px-4 py-3 pb-safe flex gap-3">
+        <div onTap={sellOne} hover-class="pressed" class:list={['flex-1 rounded-full py-2.5 flex items-center justify-center border', { 'border-primary': pos.value.canSell }, { 'border-line': !pos.value.canSell }]}>
+          <span class:list={['text-cell font-semibold', { 'text-primary': pos.value.canSell }, { 'text-disabled': !pos.value.canSell }]}>卖出一股</span>
+        </div>
+        <div onTap={buyOne} hover-class="pressed" class="flex-1 rounded-full bg-danger py-2.5 flex items-center justify-center">
+          <span class="text-cell text-white font-semibold">买入一股</span>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
