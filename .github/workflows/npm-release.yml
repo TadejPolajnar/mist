@@ -126,9 +126,19 @@ jobs:
         run: |
           set -euo pipefail
           for d in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu linux-x64-musl win32-x64; do
+            if npm view "@mist-lang/$d@$VERSION" version > /dev/null 2>&1; then
+              echo "@mist-lang/$d@$VERSION already published — skipping"
+              continue
+            fi
             (cd "npm/$d" && npm publish --access public --provenance)
           done
       - name: Publish meta package last
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: cd npm/mist-lang && npm publish --access public --provenance
+        run: |
+          set -euo pipefail
+          if npm view "mist-lang@$VERSION" version > /dev/null 2>&1; then
+            echo "mist-lang@$VERSION already published — skipping"
+            exit 0
+          fi
+          cd npm/mist-lang && npm publish --access public --provenance

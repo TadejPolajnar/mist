@@ -1,5 +1,6 @@
 /target
 dist/
-npm/*/bin/mistc*
+npm/*/bin/mistc
+npm/*/bin/mistc.exe
 *.vsix
 editors/vscode/node_modules/
