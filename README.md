@@ -1,8 +1,27 @@
-# Mist / mistc
+<p align="center">
+  <img src="docs/assets/cover.png" width="620" alt="Mist — Mini-app Static Templates" />
+</p>
 
-[中文说明 → README.zh-CN.md](README.zh-CN.md)
+<p align="center">
+  <b>A component language and compiler for WeChat Mini Programs — like Svelte, for WeChat.</b><br />
+  Astro-flavored single-file components, compiled by Rust to native mini-program code with near-hand-written performance.
+</p>
 
-**A component language and compiler for WeChat Mini Programs — like Svelte, for WeChat.** Astro-flavored single-file components, compiled by Rust to native mini-program code with near-hand-written performance.
+<p align="center">
+  <a href="https://github.com/TadejPolajnar/mist/actions/workflows/ci.yml"><img src="https://github.com/TadejPolajnar/mist/actions/workflows/ci.yml/badge.svg" alt="ci" /></a>
+  <a href="https://www.npmjs.com/package/mist-lang"><img src="https://img.shields.io/npm/v/mist-lang?color=07c160&label=mist-lang" alt="npm" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT" /></a>
+</p>
+
+<p align="center">
+  <a href="docs/README.md">Getting started</a> ·
+  <a href="docs/language.md">Language guide</a> ·
+  <a href="docs/api.md">API</a> ·
+  <a href="docs/diagnostics.md">Diagnostics</a> ·
+  <a href="README.zh-CN.md">中文说明</a>
+</p>
+
+---
 
 Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template + Tailwind), get plain `Page()`/`Component()` mini-program code with **path-precise `setData`**: the compiler statically tracks every state mutation and emits the exact data path it changes. No virtual DOM, no runtime tree diffing, a ~10 KB runtime (3.2 KB gzipped).
 
@@ -15,7 +34,22 @@ Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template 
 
 **Measured** ([benchmark/](benchmark/)): toggling one row in a 1000-row filtered list sends **26 bytes** — within a small constant of the hand-written setData floor (guarded by `tests/bench.rs`) — across the setData bridge in exactly one batched call — ~2000× less than the naive full-resend pattern (Node harness: 49 B vs 96.6 KB). Head-to-head against Taro 3 + React in real WeChat DevTools ([benchmark/devtools/](benchmark/devtools/)): **~2.4× faster per interaction**, **2.6× less bridge traffic per toggle**, and a **29× smaller package** (10.7 KB vs 309.8 KB raw; 4.3 KB vs 86.9 KB gzipped — mist unminified, Taro a production webpack build).
 
-**Docs**: [getting started](docs/README.md) · [language guide](docs/language.md) · [API reference](docs/api.md) · [diagnostics](docs/diagnostics.md)
+## Install
+
+```sh
+npm install -g mist-lang     # prebuilt binaries for macOS / Linux / Windows
+mistc --version
+```
+
+Or from source: `cargo install --path .` in a clone of this repo (Rust 2021).
+Either way you also need **Node.js + npm** on PATH (Tailwind runs through the
+real `@tailwindcss/cli`) and **WeChat DevTools** to run the output.
+
+```sh
+mistc init my-app            # scaffold: app.mist + a todo page + DevTools config
+cd my-app
+mistc build src --watch      # rebuild on save · import my-app/ in WeChat DevTools
+```
 
 ## A taste
 
@@ -52,26 +86,25 @@ function toggle(id) {
 </div>
 ```
 
-## Prerequisites
+## Example apps
 
-- **Rust** (edition 2021) — the compiler
-- **Node.js + npm** on PATH — required: Tailwind runs via the real `@tailwindcss/cli` (installed once into a cache; first build needs network — offline builds degrade to no CSS with a warning), and runtime/benchmark tests execute in Node
-- **WeChat DevTools** — to run the output
+| [雾茶 · food ordering](examples/food) | [雾投 · portfolio](examples/portfolio) | [雾板 · kanban](examples/kanban) |
+|:---:|:---:|:---:|
+| <img src="examples/food/screenshot.png" width="220" alt="MistTea" /> | <img src="examples/portfolio/screenshot.png" width="220" alt="MistFolio" /> | <img src="examples/kanban/screenshot.png" width="220" alt="MistBoard" /> |
+| persisted cart + orders, checkout subpackage, tab icons, `migrate` | 13-node derived graph, keyed diffing, deterministic ticks | keyed reorders, cross-store deriveds, WIP limits |
 
-## Quick start
+Each ships a README, a gate test suite, and a DevTools-ready `project.config.json`.
+
+## Working on the compiler
 
 ```sh
-cargo install --path . && cargo install --path crates/mistc-lsp   # mistc + mistc-lsp on PATH
-# (or: cargo build --release → target/release/mistc)
-
-# compile the example project
-cargo run -- build examples/project/src -o dist
-
-# open in WeChat DevTools: Import Project → select THIS repo folder
-# (project.config.json points miniprogramRoot at dist/; AppID: touristappid)
+git clone https://github.com/TadejPolajnar/mist.git && cd mist
+cargo run -- build examples/project/src -o dist   # compile the smallest example
+# WeChat DevTools: Import Project → THIS repo folder (miniprogramRoot: dist/)
 
 cargo test              # full suite (spawns node + npm)
 node benchmark/bench.js # bridge-traffic benchmark
+cargo install --path crates/mistc-lsp   # LSP for editors/vscode
 ```
 
 ### CLI

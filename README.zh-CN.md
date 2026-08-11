@@ -1,8 +1,44 @@
-# Mist / mistc
+<p align="center">
+  <img src="docs/assets/cover.png" width="620" alt="Mist — Mini-app Static Templates" />
+</p>
 
-[English → README.md](README.md)
+<p align="center">
+  <b>面向微信小程序的组件语言与编译器——可以理解为「小程序界的 Svelte」。</b><br />
+  Astro 风格的单文件组件，由 Rust 编译为原生小程序代码，性能接近手写。
+</p>
 
-**面向微信小程序的组件语言与编译器——可以理解为「小程序界的 Svelte」。** Astro 风格的单文件组件，由 Rust 编译为原生小程序代码，性能接近手写。
+<p align="center">
+  <a href="https://github.com/TadejPolajnar/mist/actions/workflows/ci.yml"><img src="https://github.com/TadejPolajnar/mist/actions/workflows/ci.yml/badge.svg" alt="ci" /></a>
+  <a href="https://www.npmjs.com/package/mist-lang"><img src="https://img.shields.io/npm/v/mist-lang?color=07c160&label=mist-lang" alt="npm" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT" /></a>
+</p>
+
+<p align="center">
+  <a href="docs/README.zh-CN.md">快速上手</a> ·
+  <a href="docs/language.md">语言指南（英文）</a> ·
+  <a href="docs/api.md">API（英文）</a> ·
+  <a href="docs/diagnostics.md">诊断说明（英文）</a> ·
+  <a href="README.md">English</a>
+</p>
+
+---
+
+## 安装
+
+```sh
+npm install -g mist-lang     # macOS / Linux / Windows 预编译二进制
+mistc --version
+```
+
+也可以从源码安装：在仓库克隆中执行 `cargo install --path .`（Rust 2021）。
+两种方式都还需要 PATH 中的 **Node.js + npm**（Tailwind 通过真实的
+`@tailwindcss/cli` 运行），以及**微信开发者工具**来运行产物。
+
+```sh
+mistc init my-app            # 脚手架：app.mist + todo 页面 + 开发者工具配置
+cd my-app
+mistc build src --watch      # 保存即重编译 · 在微信开发者工具中导入 my-app/
+```
 
 编写 `.mist` 单文件组件（TypeScript frontmatter + 类 JSX 模板 + Tailwind），得到普通的 `Page()`/`Component()` 小程序代码，核心是**路径精确的 `setData`**：编译器静态追踪每一次状态变更，并生成它所改变的精确数据路径。没有虚拟 DOM，没有运行时树 diff，运行时仅约 10 KB（gzip 后 3.2 KB）。
 
@@ -14,8 +50,6 @@
 ```
 
 **实测数据**（[benchmark/](benchmark/)）：在 1000 行的过滤列表中切换一行，经 setData 桥只发送 **26 字节**——与手写 setData 的下限只差一个很小的常数（由 `tests/bench.rs` 守护）——且恰好合并为一次调用，比朴素的整表重发少约 2000 倍（Node 环境：49 B vs 96.6 KB）。在真实微信开发者工具中与 Taro 3 + React 对比（[benchmark/devtools/](benchmark/devtools/)）：**单次交互约快 2.4 倍**、**每次切换的桥接流量少 2.6 倍**、**包体积小 29 倍**（原始 10.7 KB vs 309.8 KB；gzip 后 4.3 KB vs 86.9 KB——mist 未压缩，Taro 为 webpack 生产构建）。
-
-**文档**：[快速上手](docs/README.zh-CN.md) · [语言指南（英文）](docs/language.md) · [API 参考（英文）](docs/api.md) · [诊断说明（英文）](docs/diagnostics.md)
 
 ## 尝一口
 
@@ -52,35 +86,25 @@ function toggle(id) {
 </div>
 ```
 
-## 环境要求
+## 示例应用
 
-- **Rust**（edition 2021）——编译器本体
-- **Node.js + npm** 在 PATH 中——必需：Tailwind 通过真实的 `@tailwindcss/cli` 运行（首次构建需联网，一次性安装到缓存目录；离线时构建会降级为无 CSS 并给出警告），运行时/基准测试也在 Node 中执行
-- **微信开发者工具**——运行编译产物
+| [雾茶 · 点单](examples/food) | [雾投 · 行情](examples/portfolio) | [雾板 · 看板](examples/kanban) |
+|:---:|:---:|:---:|
+| <img src="examples/food/screenshot.png" width="220" alt="雾茶" /> | <img src="examples/portfolio/screenshot.png" width="220" alt="雾投" /> | <img src="examples/kanban/screenshot.png" width="220" alt="雾板" /> |
+| 持久化购物车与订单、分包结算页、tab 图标、`migrate` 迁移 | 13 节点派生图、键控 diff、确定性行情 | 键控排序、跨 store 派生、在制限制 |
 
-## 快速开始
+每个示例都带 README、门禁测试套件和可直接导入开发者工具的 `project.config.json`。
+
+## 参与编译器开发
 
 ```sh
-cargo install --path . && cargo install --path crates/mistc-lsp   # 把 mistc 和 mistc-lsp 装进 PATH
-# （或：cargo build --release → target/release/mistc）
-
-# 编译仓库自带的示例项目
-cargo run -- build examples/project/src -o dist
-
-# 微信开发者工具 → 导入项目 → 选择本仓库根目录
-# （project.config.json 的 miniprogramRoot 指向 dist/；AppID：touristappid）
+git clone https://github.com/TadejPolajnar/mist.git && cd mist
+cargo run -- build examples/project/src -o dist   # 编译最小示例
+# 微信开发者工具 → 导入项目 → 选择本仓库根目录（miniprogramRoot: dist/）
 
 cargo test              # 完整测试套件（会调用 node 和 npm）
 node benchmark/bench.js # 桥接流量基准测试
-```
-
-新建自己的项目：
-
-```sh
-mistc init my-app
-cd my-app
-mistc build src --watch        # 每次保存自动重编译
-# 微信开发者工具 → 导入项目 → 选择 my-app/ 目录
+cargo install --path crates/mistc-lsp   # 编辑器 LSP（配合 editors/vscode）
 ```
 
 ### 命令行
