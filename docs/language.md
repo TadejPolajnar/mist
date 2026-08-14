@@ -427,8 +427,8 @@ only) and never reach the `.json`.
   set `entryPagePath` in `app.mist`'s `config` to launch a different page.
 - `app.mist` accepts `onLaunch`, `onShow`, `onHide`, `onError`,
   `onPageNotFound`, `onUnhandledRejection`, `onThemeChange` — any other hook
-  is rejected (M1013). These four are app-only; declaring them in a page or
-  component is also rejected (M1013).
+  is rejected (M1013). The last four (`onError` through `onThemeChange`) are
+  app-only; declaring them in a page or component is also rejected (M1013).
 - Navigate with `<a href="/pages/about/about">` (→ `navigator`), `wx.*` APIs
   directly (`wx` is fully available; Mist wraps nothing), or the typed
   `navigate()` intrinsic below.

@@ -15,9 +15,9 @@
 
 <p align="center">
   <a href="docs/README.zh-CN.md">快速上手</a> ·
-  <a href="docs/language.md">语言指南（英文）</a> ·
-  <a href="docs/api.md">API（英文）</a> ·
-  <a href="docs/diagnostics.md">诊断说明（英文）</a> ·
+  <a href="docs/language.zh-CN.md">语言指南</a> ·
+  <a href="docs/api.zh-CN.md">API</a> ·
+  <a href="docs/diagnostics.zh-CN.md">诊断说明</a> ·
   <a href="README.md">English</a>
 </p>
 

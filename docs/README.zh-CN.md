@@ -10,9 +10,9 @@ Mist 是一门**面向微信小程序的组件语言与编译器**：你编写 A
 [../SPEC.md](../SPEC.md)——其中一部分仍处于设计阶段；两者不一致时，以本文档为准。
 
 - **[快速上手](#快速上手)**（就在下方）
-- **[语言指南（英文）](language.md)**——文件结构、响应式、模板、组件、store、样式
-- **[API 参考（英文）](api.md)**——`'mist'` 可导入的全部内容、命令行、产物说明
-- **[诊断说明（英文）](diagnostics.md)**——每一个 `M` 编码及修复方法
+- **[语言指南](language.zh-CN.md)**——文件结构、响应式、模板、组件、store、样式
+- **[API 参考](api.zh-CN.md)**——`'mist'` 可导入的全部内容、命令行、产物说明
+- **[诊断说明](diagnostics.zh-CN.md)**——每一个 `M` 编码及修复方法
 
 ## 快速上手
 
@@ -90,6 +90,6 @@ mistc build my-app -o dist --watch    # 保存即重编译
 `mistc build examples/food/src -o examples/food/dist` 编译，然后在开发者工具中
 导入 `examples/food/`。
 
-从头到尾快速浏览 [language.md](language.md)——篇幅不长，覆盖了现有的全部功能。
-第一次被编译器拒绝时，把 [diagnostics.md](diagnostics.md) 打开放在手边；
+从头到尾快速浏览 [language.zh-CN.md](language.zh-CN.md)——篇幅不长，覆盖了现有的全部功能。
+第一次被编译器拒绝时，把 [diagnostics.zh-CN.md](diagnostics.zh-CN.md) 打开放在手边；
 每个错误都写明了修复方法。

@@ -247,6 +247,17 @@ distance 2; otherwise the warning omits the "did you mean" clause. Each
 distinct unknown tag warns once per unit, no matter how many times it
 appears.
 
+If the tag is intentional — a third-party component registered only through
+`config.usingComponents`, or one you don't want mistc to know about yet —
+list it in `config.customTags` to suppress the warning:
+
+```ts
+export const config = { customTags: ['my-web-component'] }
+```
+
+`customTags` entries must contain only letters, digits, `-` and `_`; the key
+is consumed at compile time and never reaches the emitted `.json`.
+
 ## M1020 — custom tab bar file/config mismatch
 
 WeChat requires a custom tab bar component at the fixed dist path
@@ -267,17 +278,6 @@ export const config = { tabBar: { list: [...] } }
 
 Set `tabBar: { custom: true, ... }` in `app.mist` config whenever
 `src/custom-tab-bar.mist` exists, and remove the file (or the flag) otherwise.
-
-If the tag is intentional — a third-party component registered only through
-`config.usingComponents`, or one you don't want mistc to know about yet —
-list it in `config.customTags` to suppress the warning:
-
-```ts
-export const config = { customTags: ['my-web-component'] }
-```
-
-`customTags` entries must contain only letters, digits, `-` and `_`; the key
-is consumed at compile time and never reaches the emitted `.json`.
 
 ## M1021 — unknown navigate() route
 
