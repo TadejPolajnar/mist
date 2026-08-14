@@ -492,6 +492,7 @@ pub fn analyze_with_stores_bound(
 
     // pass 1: reactive names
     let mut states: Vec<StateDecl> = Vec::new();
+    let mut state_init_spans: Vec<Option<Span>> = Vec::new();
     let mut deriveds: Vec<(String, Span)> = Vec::new();
     let mut raw_methods: Vec<(String, Span, Span, bool)> = Vec::new(); // name, params-ish span gap, body span
     let mut raw_lifecycles: Vec<(String, Span, Span, bool, bool, u32)> = Vec::new();
@@ -678,6 +679,7 @@ pub fn analyze_with_stores_bound(
                                         .first()
                                         .map(|a| text(src, a.span()).to_string())
                                         .unwrap_or_else(|| "null".to_string());
+                                    state_init_spans.push(call.arguments.first().map(|a| a.span()));
                                     states.push(StateDecl { name, init, bound: false });
                                     handled = true;
                                     continue;
@@ -918,6 +920,19 @@ pub fn analyze_with_stores_bound(
         .into_iter()
         .map(|(name, span)| DerivedDecl { arrow: rewriter.transform(src, span, &edits), name })
         .collect();
+
+    for (i, span) in state_init_spans.iter().enumerate() {
+        let Some(sp) = span else { continue };
+        let rewritten = rewriter.transform(src, *sp, &edits);
+        if states[i].bound && rewritten.contains("this.") {
+            let (line, col) = line_col(src, sp.start as usize, line_offset);
+            return Err(format!(
+                "M1022 at line {}:{}: state '{}' is template-bound but its initializer calls frontmatter code — `data` seeds cannot run functions\n  help: precompute into a module-level const, or keep the state unbound and render through a derived",
+                line, col, states[i].name
+            ));
+        }
+        states[i].init = rewritten;
+    }
 
     let plain_stmts = plain_stmts
         .into_iter()

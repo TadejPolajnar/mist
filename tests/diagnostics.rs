@@ -758,3 +758,15 @@ fn navigate_back_with_and_without_delta() {
     assert!(unit.output.js.contains("wx.navigateBack()"), "js:\n{}", unit.output.js);
     assert!(unit.output.js.contains("wx.navigateBack({ delta: 2 })"), "js:\n{}", unit.output.js);
 }
+
+#[test]
+fn m1022_bound_state_init_calling_frontmatter_function() {
+    let src = "---\nimport { state } from 'mist'\nfunction seed() { return [1, 2, 3] }\nconst items = state(seed())\n---\n<span>{items.value.length}</span>\n";
+    let err = match mistc::compile_unit(src, true) {
+        Err(e) => e,
+        Ok(_) => panic!("expected M1022"),
+    };
+    assert!(err.contains("M1022"), "err: {}", err);
+    assert!(err.contains("items"), "err: {}", err);
+    assert!(err.contains("module-level const"), "err: {}", err);
+}

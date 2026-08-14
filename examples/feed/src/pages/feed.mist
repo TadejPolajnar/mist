@@ -1,0 +1,159 @@
+---
+import { lab } from '../stores/lab.ts'
+import { state, derived, onReachBottom } from 'mist'
+
+export const config = { navigationBarTitleText: '信息流', onReachBottomDistance: 100 }
+
+const AUTHORS = [
+  { name: '雾岛记者', avatar: '🦉' },
+  { name: '晨风观察', avatar: '🦊' },
+  { name: '南山快讯', avatar: '🐼' },
+  { name: '茶楼夜谈', avatar: '🐱' },
+  { name: '江畔编辑部', avatar: '🦆' },
+  { name: '巷口通讯', avatar: '🐰' },
+]
+
+const OPENINGS = [
+  '今天路过老街，发现转角的书店换了新招牌，',
+  '凌晨的批发市场比想象中热闹，',
+  '小区门口的早餐摊回来了，',
+  '地铁三号线今早格外拥挤，',
+  '江边步道的樱花开了第一枝，',
+  '写字楼下的咖啡车换了新豆子，',
+  '菜市场的阿姨们最近都在讨论，',
+  '深夜的便利店永远亮着灯，',
+]
+
+const MIDDLES = [
+  '摊主说这批货是今早四点从产地直接运来的，价格比上周低了两成，街坊们排起了长队，队伍一直绕到巷子另一头，大家一边等一边闲聊各家的近况，',
+  '几位常客围在一起比较手里的收据，讨论着这个月的开销和下个月的打算，说到高兴处笑声把屋檐下的猫都惊醒了，',
+  '负责修缮的师傅蹲在梯子上忙了一整个上午，路过的人都忍不住停下来看两眼，有人递了瓶水上去，师傅摆摆手说快好了，',
+  '公告栏上贴出了新的时间表，密密麻麻的字迹引来不少人驻足，有人掏出手机拍照，说要发到家庭群里让父母也看看，',
+  '孩子们放学后照例聚在空地上，书包堆成一座小山，游戏规则每天都在变，但笑声从来没变过，',
+]
+
+const ENDINGS = [
+  '这样的日常大概就是这座城市最好的注脚。',
+  '不知不觉，天色已经暗了下来。',
+  '明天大概还会是这样普通又热闹的一天。',
+  '路灯亮起的时候，一切又归于平静。',
+  '生活的细节，往往藏在这些不起眼的角落里。',
+]
+
+const COUNT = 1000
+
+function lcg(seed) {
+  let s = seed
+  return function () {
+    s = (s * 1103515245 + 12345) % 2147483648
+    return s
+  }
+}
+
+function utf8Bytes(str) {
+  let bytes = 0
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i)
+    if (c < 128) {
+      bytes += 1
+    } else if (c < 2048) {
+      bytes += 2
+    } else {
+      bytes += 3
+    }
+  }
+  return bytes
+}
+
+function generate(gen) {
+  const next = lcg(20260814 + gen)
+  const list = []
+  for (let i = 0; i < COUNT; i++) {
+    const author = AUTHORS[next() % AUTHORS.length]
+    let text = OPENINGS[next() % OPENINGS.length]
+    for (let k = 0; k < 6; k++) {
+      text += MIDDLES[next() % MIDDLES.length]
+    }
+    text += ENDINGS[next() % ENDINGS.length]
+    list.push({
+      id: gen * COUNT + i + 1,
+      author: author.name,
+      avatar: author.avatar,
+      time: (next() % 23) + 1 + ' 小时前',
+      text,
+      likes: next() % 500,
+      liked: false,
+    })
+  }
+  return list
+}
+
+const posts = state(generate(0))
+const gen = state(0)
+const shown = state(50)
+
+const visible = derived(() => {
+  if (lab.value.fullRender) {
+    return posts.value.slice()
+  }
+  return posts.value.slice(0, shown.value)
+})
+
+const headerStats = derived(() => ({
+  total: posts.value.length,
+  shownCount: visible.value.length,
+  sizeStr: (utf8Bytes(JSON.stringify(posts.value)) / 1024 / 1024).toFixed(2) + ' MB',
+}))
+
+onReachBottom(() => {
+  if (!lab.value.fullRender && shown.value < posts.value.length) {
+    shown.value += lab.value.pageSize
+  }
+})
+
+function toggleLike(id) {
+  const i = posts.value.findIndex(p => p.id === id)
+  if (i < 0) {
+    return
+  }
+  if (posts.value[i].liked) {
+    posts.value[i].liked = false
+    posts.value[i].likes -= 1
+  } else {
+    posts.value[i].liked = true
+    posts.value[i].likes += 1
+  }
+}
+
+function reload() {
+  gen.value += 1
+  posts.value = generate(gen.value)
+  shown.value = lab.value.pageSize
+}
+---
+<div class="min-h-screen bg-page pb-8">
+  <div class="flex items-center justify-between px-4 py-3 bg-white border-b border-hairline">
+    <span class="text-caption text-mute">内存 {headerStats.value.total} 条 · {headerStats.value.sizeStr}</span>
+    <span class="text-caption text-primary">已渲染 {headerStats.value.shownCount} 条</span>
+  </div>
+
+  {visible.value.map(p => (
+    <div key={p.id} class="bg-white border-b border-hairline px-4 py-3">
+      <div class="flex items-center justify-between">
+        <span class="text-body text-ink font-semibold">{p.avatar} {p.author}</span>
+        <span class="text-caption text-faint">{p.time}</span>
+      </div>
+      <span class="block text-body text-ink mt-1.5">{p.text}</span>
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-caption text-faint">#{p.id}</span>
+        <div onTap={() => toggleLike(p.id)} hover-class="pressed" class="px-3 py-1 rounded-full bg-tile">
+          <span class:list={['text-caption', { 'text-danger': p.liked }, { 'text-mute': !p.liked }]}>♥ {p.likes}</span>
+        </div>
+      </div>
+    </div>
+  ))}
+
+  <div onTap={reload} hover-class="pressed" class="mx-4 mt-4 rounded-full bg-primary py-2.5 flex items-center justify-center">
+    <span class="text-cell text-white font-semibold">换一批（重新生成 1000 条）</span>
+  </div>
+</div>

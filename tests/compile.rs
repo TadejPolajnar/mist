@@ -1105,3 +1105,13 @@ fn plugin_import_emits_require_plugin() {
     assert!(out.js.contains("const cal = requirePlugin('calendar');"), "js:\n{}", out.js);
     assert!(out.js.contains("cal.select()"), "js:\n{}", out.js);
 }
+
+#[test]
+fn unbound_state_init_calling_frontmatter_function_is_rewritten() {
+    let out = compile(
+        "import { state, derived } from 'mist'\nfunction seed() { return [1, 2, 3] }\nconst items = state(seed())\nconst count = derived(() => items.value.length)",
+        "<span>{count.value}</span>",
+    );
+    assert!(out.js.contains("this._items = this.seed()"), "js:\n{}", out.js);
+    assert!(!out.js.contains("= seed()"), "bare init call must not survive:\n{}", out.js);
+}

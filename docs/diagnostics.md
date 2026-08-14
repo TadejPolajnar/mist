@@ -1,7 +1,7 @@
 # Diagnostics
 
 Errors carry a code and a fix; M1001, M1004, M1007, M1011, M1013, M1017 and
-M1021 include file line:col and M1010 the line (other codes report the file
+M1021 and M1022 include file line:col and M1010 the line (other codes report the file
 path only; M1015 reports line:col for import-shape errors and file path only
 for the `pluginComponents` value/collision checks). Warnings (`M1002`,
 `M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`) go to stderr and
@@ -335,3 +335,28 @@ M1001 catches direct writes through single-assignment local aliases. Writes it
 cannot trace — an alias passed into a helper that mutates its parameter, or a
 mutation inside a callback over a derived copy — still compile to nothing
 reactive. Always write through the full `x.value…` path.
+
+## M1022 — template-bound state initialized by frontmatter code
+
+A `state()` initializer that calls a frontmatter function (or reads other
+state) cannot seed `data` — the `data: {}` literal is evaluated before any
+page code runs, so `this` does not exist there. Unbound state is fine: it
+seeds in `onLoad`, where the call compiles to a method invocation.
+
+```ts
+function generate() { return [1, 2, 3] }
+
+const items = state(generate())
+```
+
+```jsx
+<span>{items.value.length}</span>          // ✗ M1022 — items is template-bound
+```
+
+Fixes: precompute into a module-level const (`const INITIAL = [...]` outside
+any function), or keep the state unbound and render it through a `derived`:
+
+```ts
+const INITIAL = [1, 2, 3]
+const items = state(INITIAL)               // ✓ const seed works everywhere
+```
