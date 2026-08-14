@@ -34,8 +34,8 @@ warning.
 ## Reporting bugs
 
 Open an issue with a minimal `.mist` file that reproduces the problem and the
-exact `mistc` output. Compiler bugs with reproductions get fixed fast — the
-example apps in `examples/` have caught fifteen of them.
+exact `mistc` output. Compiler bugs with reproductions get fixed fast — the example apps in
+`examples/` were built precisely to flush them out, and they keep working.
 
 ## Security
 
