@@ -8,7 +8,8 @@ fn bin() -> &'static str {
 fn version_and_help() {
     let v = Command::new(bin()).arg("--version").output().unwrap();
     assert!(v.status.success());
-    assert!(String::from_utf8_lossy(&v.stdout).contains("mistc 0.1.0"));
+    assert!(String::from_utf8_lossy(&v.stdout)
+        .contains(&format!("mistc {}", env!("CARGO_PKG_VERSION"))));
     let h = Command::new(bin()).arg("--help").output().unwrap();
     assert!(h.status.success());
     let out = String::from_utf8_lossy(&h.stdout);
