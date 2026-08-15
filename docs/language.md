@@ -210,9 +210,10 @@ state, derived, functions, callback props, events, slots, lifecycles, imports or
 `config` — never becomes a WeChat component. It compiles to
 a WXML `<template>` partial inlined into its parents: no instance overhead, no
 JS, styles merged. **Note the styling consequence**: an inlined component's
-`<style>` merges into the parent page (page-wide scope), while a real
-component gets WeChat's per-component style isolation — if you rely on
-isolation, opt out of inlining. This is otherwise invisible unless you look at
+plain `<style>` merges into the parent page (page-wide scope), while a real
+component gets WeChat's per-component style isolation — use `<style scoped>`
+(see Styling) to keep an inlined component's classes to itself, or opt out of
+inlining. This is otherwise invisible unless you look at
 `dist/`. Opt out with
 `export const config = { inline: false }` — the component then compiles as a
 real `Component()`; the `inline` key is compiler-only and never reaches the
@@ -390,7 +391,20 @@ only) and never reach the `.json`.
 - `bg-gradient-to-*`/`from-*`/`via-*`/`to-*` gradients interpolate in sRGB —
   color-interpolation hints (`in oklab`, …) are stripped for device
   compatibility with older WeChat webviews.
-- `<style>` blocks compile to the unit's `.wxss` verbatim (no scoping yet).
+- `<style>` blocks compile to the unit's `.wxss` verbatim.
+- **`<style scoped>`** scopes the block to its unit: every class selector gets
+  a readable per-unit suffix (`.card` → `.card--todo-item`), rewritten
+  identically in the WXSS and in the unit's markup (`class`, `hover-class`,
+  `placeholder-class`,
+  including string literals inside ternaries, `class:list`, template
+  literals, and hoisted class expressions). This is what makes **inlined**
+  components safe to style — their merged styles can no longer collide with
+  the parent. `@media`/`@supports` bodies are scoped recursively;
+  `@keyframes` and tag selectors are left untouched (keyframe names stay
+  global). One limit: a class name **returned from a frontmatter function**
+  (e.g. `class={cls()}` where `cls` builds the string) is not rewritten —
+  keep scoped class literals in the template. `app.mist`'s style cannot be
+  scoped — it is global by definition.
 - `app.mist`'s `<style>` becomes `app.wxss` (global; `page { … }` is valid there).
 - **Design tokens** — place `src/theme.css` next to `app.mist` to define
   Tailwind v4 tokens and custom utilities for the whole project:
@@ -621,7 +635,7 @@ components (`model:` on a custom component) is not supported yet.
 
 `[id].mist` file-based route params (query strings + `onLoad(({id}) => …)` work
 today — see examples/ledger's detail page), calls in nested loops (M1009),
-`<style>` scoping, npm imports in frontmatter (rejected with an error — only
+npm imports in frontmatter (rejected with an error — only
 `mist`, store modules and `.mist` components import). Tab bar/window config:
 put `tabBar` in `app.mist`'s `config` — no separate config file needed.
 

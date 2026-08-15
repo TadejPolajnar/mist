@@ -1,4 +1,5 @@
 pub mod frontmatter;
+pub mod scope;
 pub mod sfc;
 pub mod tailwind;
 pub mod tailwind_cli;
@@ -124,7 +125,7 @@ pub fn compile(source: &str) -> Result<Output, String> {
 }
 
 pub fn compile_unit(source: &str, is_page: bool) -> Result<Unit, String> {
-    compile_unit_full(source, is_page, &[], Layout::Flat, DEFAULT_DEPTH, &|_| None)
+    compile_unit_full(source, is_page, &[], Layout::Flat, DEFAULT_DEPTH, "unit", &|_| None)
 }
 
 fn template_const_refs(wxml: &str, names: &[String]) -> Vec<String> {
@@ -153,7 +154,7 @@ pub fn compile_unit_with_stores(
     is_page: bool,
     resolve_store: &dyn Fn(&str) -> Option<frontmatter::StoreModuleInfo>,
 ) -> Result<Unit, String> {
-    compile_unit_full(source, is_page, &[], Layout::Flat, DEFAULT_DEPTH, resolve_store)
+    compile_unit_full(source, is_page, &[], Layout::Flat, DEFAULT_DEPTH, "unit", resolve_store)
 }
 
 /// `inline`: local names of imported components to inline as `<template>` uses.
@@ -166,6 +167,7 @@ fn compile_unit_full(
     inline: &[String],
     layout: Layout,
     depth: usize,
+    scope_name: &str,
     resolve_store: &dyn Fn(&str) -> Option<frontmatter::StoreModuleInfo>,
 ) -> Result<Unit, String> {
     let sfc = sfc::split(source)?;
@@ -275,7 +277,7 @@ fn compile_unit_full(
             .collect();
         return Err(msgs.join("; "));
     }
-    let wxml_out = wxml::emit(&nodes, &reactive, &component_locals, inline)?;
+    let mut wxml_out = wxml::emit(&nodes, &reactive, &component_locals, inline)?;
 
     // wx:key per derived, resolved from template loops rendering that derived
     let loops = template::for_lists(&nodes);
@@ -330,6 +332,17 @@ fn compile_unit_full(
                 .and_then(|(_, key)| key.clone())
         })
         .collect();
+
+    let scoping = if sfc.style_scoped {
+        Some(scope::scope_style(sfc.style.unwrap_or(""), scope_name))
+    } else {
+        None
+    };
+    if let Some((_, names)) = &scoping {
+        for &i in &wxml_out.class_hoists {
+            wxml_out.hoisted[i] = scope::scope_class_expr(&wxml_out.hoisted[i], names, scope_name);
+        }
+    }
 
     // template-hoisted expressions become generated deriveds
     let hoists = frontmatter::hoisted_deriveds(&analysis, &wxml_out.hoisted, &wxml_out.for_hoists)?;
@@ -420,8 +433,17 @@ fn compile_unit_full(
     }
     wxml.push_str(&wxml_out.wxml);
 
-    let classes = tailwind::extract_classes(&nodes);
-    let style = sfc.style.unwrap_or("").to_string();
+    let mut classes = tailwind::extract_classes(&nodes);
+    let mut style = sfc.style.unwrap_or("").to_string();
+    if let Some((scoped_css, names)) = scoping {
+        style = scoped_css;
+        wxml = scope::scope_wxml(&wxml, &names, scope_name);
+        for c in classes.iter_mut() {
+            if names.contains(c.as_str()) {
+                *c = scope::suffixed(c, scope_name);
+            }
+        }
+    }
     let wxss = assemble_wxss(&classes, &style, &[], layout, depth, is_page);
 
     let store_import_paths: Vec<String> =
@@ -446,9 +468,19 @@ fn compile_template_unit(source: &str, name: &str) -> Result<Unit, String> {
     let nodes = template::parse_at(sfc.template, sfc.template_line)?;
     let wxml_out = wxml::emit(&nodes, &[], &[], &[])?;
     let body: String = wxml_out.wxml.lines().map(|l| format!("  {}\n", l)).collect();
-    let wxml = format!("<template name=\"{}\">\n{}</template>\n", name, body);
-    let classes = tailwind::extract_classes(&nodes);
-    let style = sfc.style.unwrap_or("").to_string();
+    let mut wxml = format!("<template name=\"{}\">\n{}</template>\n", name, body);
+    let mut classes = tailwind::extract_classes(&nodes);
+    let mut style = sfc.style.unwrap_or("").to_string();
+    if sfc.style_scoped {
+        let (scoped_css, names) = scope::scope_style(&style, name);
+        style = scoped_css;
+        wxml = scope::scope_wxml(&wxml, &names, name);
+        for c in classes.iter_mut() {
+            if names.contains(c.as_str()) {
+                *c = scope::suffixed(c, name);
+            }
+        }
+    }
     Ok(Unit {
         output: Output { wxml, js: String::new(), wxss: String::new(), json: None },
         used_imports: Vec::new(),
@@ -827,6 +859,9 @@ fn compile_app(
     fields.push("\"sitemapLocation\": \"sitemap.json\"".to_string());
     let json = format!("{{ {} }}", fields.join(", "));
 
+    if sfc.style_scoped {
+        return Err("app.mist <style> cannot be scoped — app styles are global by definition".to_string());
+    }
     let wxss = sfc.style.unwrap_or("").to_string();
     ctx.style_defined_classes.extend(tailwind::harvest_style_classes(&wxss));
     Ok(AppShell { js, json, wxss })
@@ -1053,7 +1088,7 @@ fn compile_rec_at(
             }
         }
     }
-    let unit = compile_unit_full(&source, is_page, &inline, ctx.layout, depth, &resolver)
+    let unit = compile_unit_full(&source, is_page, &inline, ctx.layout, depth, &name, &resolver)
         .map_err(|e| format!("{}: {}", path.display(), e))?;
     for c in &unit.classes {
         ctx.class_sources.entry(c.clone()).or_insert_with(|| path.display().to_string());

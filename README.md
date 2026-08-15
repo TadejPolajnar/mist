@@ -221,12 +221,12 @@ The emitted JS is deliberately readable (WeChat DevTools can't load source maps)
 
 ## Status
 
-Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics, benchmark — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: `[id].mist` route files, `<style>` scoping, npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
+Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics, benchmark — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: `[id].mist` route files, npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
 
 ## Roadmap
 
 1. Real-device benchmark numbers (needs a registered AppID)
-2. Nested-loop hoisting, `<style>` scoping
+2. Nested-loop hoisting
 3. Zero-Node option: bundle Tailwind's standalone binary
 4. `mistc-lsp` polish (incremental sync, cross-file store rename) — diagnostics,
    completions, hover, go-to-definition, signature help, rename and the

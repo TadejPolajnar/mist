@@ -85,7 +85,7 @@ pub fn harvest_style_classes(css: &str) -> Vec<String> {
     out
 }
 
-fn strip_comments(css: &str) -> String {
+pub(crate) fn strip_comments(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
     let mut chars = css.chars().peekable();
     while let Some(c) = chars.next() {

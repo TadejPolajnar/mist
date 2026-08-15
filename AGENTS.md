@@ -14,7 +14,7 @@ thesis (49 B/toggle in the Node harness, 26 B on-device, guarded by `tests/bench
 
 ## Architecture map
 
-~7.4k lines of Rust (7,442 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
+~7.7k lines of Rust (7,700 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
 (bump in lockstep; span semantics are load-bearing) + `regex`. No serde — JSON is
 hand-emitted.
 
@@ -26,7 +26,8 @@ hand-emitted.
 | `src/wxml.rs` | ~780 | WXML emission: tag mapping (`div`→`view`…, `a href`→`navigator url`), event compilation (`onTap[:catch\|:mut]`, inline arrows → `_eN` handlers + `data-a*`), component vs inline-template use sites, class sanitization routing, **`value:bind`** (→ `model:value` + `__vb_<name>` handler), **`class:list`** (string/`cond && 'x'`/object entries → one class attr with WXML ternaries; exclusive with `class`), **expression hoisting** (page-scope `_h<i>`, per-item `_hl<i>` lists carrying `_c<i>` computed fields). `Handler` is the wxml↔js contract. |
 | `src/tailwind.rs` | ~210 | Class extraction from templates + name sanitization (`w-[32px]`→`w-_32px_`) — must stay byte-identical between markup and CSS selectors. |
 | `src/tailwind_cli.rs` | ~670 | Runs real `@tailwindcss/cli` v4 (npm-installed into `~/.cache/mistc/tw4`, per-invocation `io-<pid>-<counter>` subdirs; post-processed output **memoized per class-set hash** in `css-<hash>/` dirs) and rewrites v4 CSS for WXSS: `@layer` unwrap, `@property`→var substitution, `:root,:host`→`page`, `oklch()`→hex, `color-mix`→`rgba`, media ranges→min/max-width, rem→rpx (1rem=32rpx), allowlist selector filter, `page{}` theme split. |
-| `src/sfc.rs` | ~47 | Splits `---` frontmatter / template / `<style>`; records 1-based line offsets so diagnostics report real file positions. |
+| `src/sfc.rs` | ~51 | Splits `---` frontmatter / template / `<style>`; parses `<style scoped>`; records 1-based line offsets so diagnostics report real file positions. |
+| `src/scope.rs` | ~190 | `<style scoped>`: per-unit class suffixing (`.card`→`.card--<name>`) applied identically to WXSS selectors (comments stripped first; recursing into `@media`/`@supports`, skipping `@keyframes`) and to markup `class`/`hover-class`/`placeholder-class` values (space-anchored attr match) incl. quoted literals inside WXML ternaries; `scope_class_expr` rewrites literals (incl. template-literal text) in hoisted class expressions (`WxmlOutput::class_hoists`) before `hoisted_deriveds` bakes them into JS. Class names built inside frontmatter functions are not rewritten (documented limit). |
 | `src/main.rs` | ~370 | clap CLI: `mistc build <dir\|file> [-o out] [--app] [--watch]` (notify-based watcher, 120ms debounce, output dir excluded) and `mistc init <name>` (scaffolds src/app.mist + todo page + project.config.json); writes the dist tree, records it in `dist/.mist-manifest` and prunes stale outputs; prints warnings. |
 | `runtime/mist-rt.js` | ~380 | `set/touch/flush` (microtask-batched setData; `touch(page, name?)` = derive-only flush for unbound state), `derive(page, out, name, key, compute, deps)` (keyed **field-level** diff vs `__prev` snapshots; **per-derived dirty bits** — `deps` from `frontmatter::derived_deps` (resolves through pure methods and store accessors), clean deriveds skipped, changed deriveds re-dirty for chains; `deps` omitted/null ⇒ always recompute; **transactional flush** — mirror/`__prev` roll back if `setData` throws, next flush recomputes all), `applyPath`, `store/bindStores/unbindStores` (cross-page path-precise notifications), `observePerf/perfEntries` (launch metrics, wired into generated `app.js`). |
 
@@ -231,7 +232,8 @@ rebinds cancel, covers for-of and iterator-callback params).
 
 **Design-only (do not assume these exist):** static *subtree*
 hoisting (§8.4 — distinct from §4.2 expression hoisting, which ships); setData budget chunking; `[id].mist` route files;
-`mist.config.ts` as a file; `<style>` scoping / `global`;
+`mist.config.ts` as a file; `<style global>`
+(`<style scoped>` ships — per-unit `--<name>` suffixing in `src/scope.rs`);
 `mist trace`; package-size budgets; npm interop;
 snapshot testing; hoisting inside nested loops.
 

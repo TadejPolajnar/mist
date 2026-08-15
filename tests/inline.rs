@@ -125,3 +125,27 @@ fn component_with_plain_const_is_not_inlined() {
     assert!(badge.output.js.contains("Component({"), "const-bearing component must stay real:\n{}", badge.output.js);
     assert!(badge.output.js.contains("LABEL: LABEL,"), "const must seed component data:\n{}", badge.output.js);
 }
+
+#[test]
+fn scoped_inlined_component_styles_do_not_leak() {
+    let dir = std::env::temp_dir().join("mist-inline-scoped");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("Chip.mist"),
+        "---\nimport { props } from 'mist'\nconst { label } = props()\n---\n<span class=\"card\">{label}</span>\n<style scoped>\n.card { color: green; }\n</style>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("page.mist"),
+        "---\nimport Chip from './Chip.mist'\nimport { state } from 'mist'\nconst n = state(0)\n---\n<div class=\"card\"><Chip label=\"x\" />{n.value}</div>\n<style>\n.card { color: red; }\n</style>\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project(&dir.join("page.mist")).expect("project compile failed");
+    let page = p.files.iter().find(|f| f.name == "page").expect("page missing");
+    let chip = p.files.iter().find(|f| f.name == "chip").expect("chip missing");
+    assert!(chip.output.wxml.contains("class=\"card--chip\""), "chip wxml:\n{}", chip.output.wxml);
+    assert!(page.output.wxss.contains(".card--chip { color: green"), "merged chip style must be scoped:\n{}", page.output.wxss);
+    assert!(page.output.wxss.contains(".card { color: red"), "page's own class must stay:\n{}", page.output.wxss);
+    assert!(page.output.wxml.contains("class=\"card\""), "page markup must stay unscoped:\n{}", page.output.wxml);
+}

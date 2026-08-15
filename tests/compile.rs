@@ -1115,3 +1115,71 @@ fn unbound_state_init_calling_frontmatter_function_is_rewritten() {
     assert!(out.js.contains("this._items = this.seed()"), "js:\n{}", out.js);
     assert!(!out.js.contains("= seed()"), "bare init call must not survive:\n{}", out.js);
 }
+
+#[test]
+fn scoped_style_suffixes_selectors_and_markup() {
+    let out = compile(
+        "import { state } from 'mist'\nconst on = state(false)\nfunction tap() { on.value = true }",
+        "<div class=\"card p-4\"><span class={on.value ? 'card big' : 'dim'}>x</span><div hover-class=\"card\" onTap={tap}>t</div></div>\n<style scoped>\n.card { color: red; }\n.big { font-weight: bold; }\n@media (min-width: 600px) { .card { color: blue; } }\n@keyframes spin { from { opacity: 0; } }\n</style>",
+    );
+    assert!(out.wxss.contains(".card--unit {"), "wxss:\n{}", out.wxss);
+    assert!(out.wxss.contains(".card--unit { color: blue"), "media selectors must scope:\n{}", out.wxss);
+    assert!(out.wxss.contains("@keyframes spin { from"), "keyframes must stay untouched:\n{}", out.wxss);
+    assert!(out.wxml.contains("class=\"card--unit p-4\""), "wxml:\n{}", out.wxml);
+    assert!(out.wxml.contains("'card--unit big--unit'"), "ternary literals must scope:\n{}", out.wxml);
+    assert!(out.wxml.contains("'dim'"), "unscoped names stay:\n{}", out.wxml);
+    assert!(out.wxml.contains("hover-class=\"card--unit\""), "hover-class must scope:\n{}", out.wxml);
+}
+
+#[test]
+fn scoped_style_rewrites_hoisted_class_expressions() {
+    let out = compile(
+        "import { state } from 'mist'\nconst on = state(false)\nfunction extra() { return on.value ? 'big' : '' }",
+        "<div class={on.value ? `card ${extra()}` : 'dim'}>x</div>\n<style scoped>\n.card { color: red; }\n.dim { opacity: 0.5; }\n</style>",
+    );
+    assert!(out.wxml.contains("class=\"{{_h0}}\""), "class expr must hoist:\n{}", out.wxml);
+    assert!(out.js.contains("card--unit"), "hoisted class literal must scope:\n{}", out.js);
+    assert!(out.js.contains("'dim--unit'"), "hoisted ternary literal must scope:\n{}", out.js);
+}
+
+#[test]
+fn scoped_style_survives_comments_with_stray_braces() {
+    let out = compile(
+        "import { state } from 'mist'\nconst n = state(0)",
+        "<div class=\"card\">{n.value}</div>\n<style scoped>\n/* TODO: wrap in { later */\n.card { color: red; }\n/* trailing } note */\n.big { font-weight: bold; }\n</style>",
+    );
+    assert!(out.wxss.contains(".card--unit { color: red"), "wxss:\n{}", out.wxss);
+    assert!(out.wxss.contains(".big--unit { font-weight: bold"), "wxss:\n{}", out.wxss);
+    assert!(!out.wxss.contains("TODO"), "comments must be stripped:\n{}", out.wxss);
+}
+
+#[test]
+fn scoped_style_ignores_strings_in_css() {
+    let out = compile(
+        "import { state } from 'mist'\nconst n = state(0)",
+        "<div class=\"card\">{n.value}</div>\n<style scoped>\n.card { content: \"}\"; color: red; }\n[data-x=\".card\"] { color: green; }\n.big { font-weight: bold; }\n</style>",
+    );
+    assert!(out.wxss.contains(".card--unit { content: \"}\"; color: red"), "brace in string must not end the rule:\n{}", out.wxss);
+    assert!(out.wxss.contains("[data-x=\".card\"] { color: green"), "class-like text in attr-selector strings must stay:\n{}", out.wxss);
+    assert!(out.wxss.contains(".big--unit { font-weight: bold"), "wxss:\n{}", out.wxss);
+}
+
+#[test]
+fn scoped_style_anchors_class_attributes() {
+    let out = compile(
+        "import { state } from 'mist'\nconst n = state(0)",
+        "<div subclass=\"card\"><input placeholder-class=\"ph\" />{n.value}</div>\n<style scoped>\n.card { color: red; }\n.ph { color: gray; }\n</style>",
+    );
+    assert!(out.wxml.contains("subclass=\"card\""), "non-class attrs must stay untouched:\n{}", out.wxml);
+    assert!(out.wxml.contains("placeholder-class=\"ph--unit\""), "placeholder-class must scope:\n{}", out.wxml);
+}
+
+#[test]
+fn unscoped_style_stays_verbatim() {
+    let out = compile(
+        "import { state } from 'mist'\nconst n = state(0)",
+        "<div class=\"card\">{n.value}</div>\n<style>\n.card { color: red; }\n</style>",
+    );
+    assert!(out.wxss.contains(".card {"), "wxss:\n{}", out.wxss);
+    assert!(out.wxml.contains("class=\"card\""), "wxml:\n{}", out.wxml);
+}

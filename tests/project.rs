@@ -941,3 +941,18 @@ fn m1002_silent_for_class_defined_only_inside_media_query() {
         p.unknown_classes
     );
 }
+
+#[test]
+fn app_style_rejects_scoped() {
+    let dir = std::env::temp_dir().join("mist-app-scoped");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(dir.join("pages/index.mist"), "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n").unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n<style scoped>\npage { background: red; }\n</style>\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("cannot be scoped"), "err: {}", err);
+}

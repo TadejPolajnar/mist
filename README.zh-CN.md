@@ -211,12 +211,12 @@ src/
 
 ## 当前状态
 
-端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断、基准测试——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。仍处于设计阶段：`[id].mist` 路由文件、`<style>` 作用域、npm 导入。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
+端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断、基准测试——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。仍处于设计阶段：`[id].mist` 路由文件、npm 导入。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
 
 ## 路线图
 
 1. 真机基准数据（需要已注册的 AppID）
-2. 嵌套循环提升、`<style>` 作用域
+2. 嵌套循环提升
 3. 零 Node 方案：打包 Tailwind 独立二进制
 4. `mistc-lsp` 打磨（增量同步、跨文件 store 重命名）——诊断、补全、悬停、跳转定义、签名帮助、重命名以及 [editors/vscode](editors/vscode) 客户端均已可用
 

@@ -160,7 +160,7 @@ const { todo, onToggle } = props({ todo: null })
   `onSaveExitState`（返回 `{ data, expireTimeStamp? }`，把恢复快照交给
   微信）；两者都仅限页面。
 
-**自动内联：**严格纯渲染的组件——只有数据 prop；没有状态、派生值、函数、回调 prop、事件、slot、生命周期、导入或 `config`——永远不会成为微信组件。它编译为内联进各父级的 WXML `<template>` 片段：没有实例开销，没有 JS，样式合并。**注意样式后果**：内联组件的 `<style>` 合并进父页面（页面级作用域），而真正的组件获得微信的按组件样式隔离——如果你依赖隔离，请关闭内联。除非查看 `dist/`，否则这在其他方面不可见。用 `export const config = { inline: false }` 关闭内联——组件随即编译为真正的 `Component()`；`inline` 键仅存在于编译期，永远不会进入生成的 `.json`。
+**自动内联：**严格纯渲染的组件——只有数据 prop；没有状态、派生值、函数、回调 prop、事件、slot、生命周期、导入或 `config`——永远不会成为微信组件。它编译为内联进各父级的 WXML `<template>` 片段：没有实例开销，没有 JS，样式合并。**注意样式后果**：内联组件的普通 `<style>` 合并进父页面（页面级作用域），而真正的组件获得微信的按组件样式隔离——用 `<style scoped>`（见「样式」一节）让内联组件的 class 只作用于自身，或者关闭内联。除非查看 `dist/`，否则这在其他方面不可见。用 `export const config = { inline: false }` 关闭内联——组件随即编译为真正的 `Component()`；`inline` 键仅存在于编译期，永远不会进入生成的 `.json`。
 
 非内联组件默认生成 `"styleIsolation": "isolated"`；在 `config` 中设置 `styleIsolation` 可覆盖，例如 `'apply-shared'` 允许页面样式级联进来。
 
@@ -303,7 +303,17 @@ export const config = {
 - `bg-gradient-to-*`/`from-*`/`via-*`/`to-*` 渐变在 sRGB 中插值——
   颜色插值提示（`in oklab` 等）被剥离，以兼容较旧微信 webview 的
   设备。
-- `<style>` 块原样编译为该单元的 `.wxss`（尚无作用域）。
+- `<style>` 块原样编译为该单元的 `.wxss`。
+- **`<style scoped>`** 把样式块的作用域限定在本单元：每个 class 选择器获得
+  可读的按单元后缀（`.card` → `.card--todo-item`），并在 WXSS 与该单元的
+  标记（`class`、`hover-class`、`placeholder-class`，包括三元表达式、`class:list`、模板字符串
+  和被提升的 class 表达式里的字符串字面量）中做完全一致的改写。这正是让
+  **内联**组件可以安全携带样式的机制——合并后的样式不会再与父级冲突。
+  `@media`/`@supports` 的内容递归处理；`@keyframes` 和标签选择器保持不变
+  （keyframe 名仍是全局的）。一个限制：**由 frontmatter 函数返回**的
+  class 名（如 `class={cls()}`，字符串在 `cls` 内部拼出）不会被改写——
+  请把需要作用域的 class 字面量写在模板里。`app.mist` 的样式不能加
+  scoped——它天然就是全局的。
 - `app.mist` 的 `<style>` 成为 `app.wxss`（全局；`page { … }` 在那里有效）。
 - **设计令牌**——把 `src/theme.css` 放在 `app.mist` 旁边，为整个项目
   定义 Tailwind v4 令牌和自定义工具类：
@@ -481,6 +491,6 @@ onShow(() => {
 
 ## 尚未支持（路线图——这些功能今天会给出明确的错误）
 
-`[id].mist` 基于文件的路由参数（查询字符串 + `onLoad(({id}) => …)` 今天可用——见 examples/ledger 的详情页）、嵌套循环内的调用（M1009）、`<style>` 作用域、frontmatter 中的 npm 导入（报错拒绝——只能导入 `mist`、store 模块和 `.mist` 组件）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
+`[id].mist` 基于文件的路由参数（查询字符串 + `onLoad(({id}) => …)` 今天可用——见 examples/ledger 的详情页）、嵌套循环内的调用（M1009）、frontmatter 中的 npm 导入（报错拒绝——只能导入 `mist`、store 模块和 `.mist` 组件）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
 
 TypeScript 注解（参数/返回类型、`interface`、`type`、`as`、泛型、`import type`）在生成前被剥离——放心添加注解；它们都不会进入生成的 JS。`enum` 是例外：它是运行时构造，会被拒绝并附带修复提示（请使用 const 对象或字符串字面量联合类型）。

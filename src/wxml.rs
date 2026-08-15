@@ -17,6 +17,9 @@ pub struct WxmlOutput {
     pub vbinds: Vec<String>,
     /// page-scope template expressions hoisted into generated deriveds `_h<i>`
     pub hoisted: Vec<String>,
+    /// indices into `hoisted` whose expressions produce class names (from
+    /// `class`/`class:list` attrs) — `<style scoped>` rewrites their literals
+    pub class_hoists: Vec<usize>,
     /// per-item hoists: loops whose items gain computed `_c<i>` fields
     pub for_hoists: Vec<ForHoist>,
     /// tags neither a native WeChat element, a web alias, nor a registered
@@ -43,6 +46,7 @@ struct Ctx {
     used_inline: Vec<String>,
     vbinds: Vec<String>,
     hoisted: Vec<String>,
+    class_hoists: Vec<usize>,
     for_hoists: Vec<ForHoist>,
     /// active expr → replacement rewrites while emitting a hoisted loop body
     rewrites: Vec<(String, String)>,
@@ -71,6 +75,7 @@ pub fn emit(
         used_inline: Vec::new(),
         vbinds: Vec::new(),
         hoisted: Vec::new(),
+        class_hoists: Vec::new(),
         for_hoists: Vec::new(),
         rewrites: Vec::new(),
         call_re: Regex::new(r"[A-Za-z0-9_\]]\s*\(").map_err(|e| e.to_string())?,
@@ -86,6 +91,7 @@ pub fn emit(
         used_inline: ctx.used_inline,
         vbinds: ctx.vbinds,
         hoisted: ctx.hoisted,
+        class_hoists: ctx.class_hoists,
         for_hoists: ctx.for_hoists,
         unknown_tags: ctx.unknown_tags,
     })
@@ -412,7 +418,7 @@ fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool) -
         }
         AttrValue::Expr(e) if attr.name == "class" => {
             let e = crate::tailwind::sanitize_class_expr(e);
-            let b = ctx.hoist_or_bind(&e)?;
+            let b = ctx.hoist_class_expr(&e)?;
             out.push_str(&format!(" class=\"{{{{{}}}}}\"", attr_escape(&b)));
         }
         AttrValue::Expr(e) if attr.name == "class:list" => {
@@ -525,7 +531,7 @@ fn class_list_value(expr: &str, ctx: &mut Ctx) -> Result<String, String> {
             }
         } else {
             let e = crate::tailwind::sanitize_class_expr(item);
-            let b = ctx.hoist_or_bind(&e)?;
+            let b = ctx.hoist_class_expr(&e)?;
             parts.push(format!("{{{{({}) || ''}}}}", attr_escape(&b)));
         }
     }
@@ -633,6 +639,15 @@ impl Ctx {
         let name = format!("_h{}", self.hoisted.len());
         self.hoisted.push(t.to_string());
         Ok(name)
+    }
+
+    fn hoist_class_expr(&mut self, expr: &str) -> Result<String, String> {
+        let before = self.hoisted.len();
+        let b = self.hoist_or_bind(expr)?;
+        if self.hoisted.len() > before {
+            self.class_hoists.push(before);
+        }
+        Ok(b)
     }
 }
 
