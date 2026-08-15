@@ -14,7 +14,7 @@ thesis (49 B/toggle in the Node harness, 26 B on-device, guarded by `tests/bench
 
 ## Architecture map
 
-~7.7k lines of Rust (7,700 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
+~7.8k lines of Rust (7,827 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
 (bump in lockstep; span semantics are load-bearing) + `regex`. No serde — JSON is
 hand-emitted.
 
@@ -28,7 +28,8 @@ hand-emitted.
 | `src/tailwind_cli.rs` | ~670 | Runs real `@tailwindcss/cli` v4 (npm-installed into `~/.cache/mistc/tw4`, per-invocation `io-<pid>-<counter>` subdirs; post-processed output **memoized per class-set hash** in `css-<hash>/` dirs) and rewrites v4 CSS for WXSS: `@layer` unwrap, `@property`→var substitution, `:root,:host`→`page`, `oklch()`→hex, `color-mix`→`rgba`, media ranges→min/max-width, rem→rpx (1rem=32rpx), allowlist selector filter, `page{}` theme split. |
 | `src/sfc.rs` | ~51 | Splits `---` frontmatter / template / `<style>`; parses `<style scoped>`; records 1-based line offsets so diagnostics report real file positions. |
 | `src/scope.rs` | ~190 | `<style scoped>`: per-unit class suffixing (`.card`→`.card--<name>`) applied identically to WXSS selectors (comments stripped first; recursing into `@media`/`@supports`, skipping `@keyframes`) and to markup `class`/`hover-class`/`placeholder-class` values (space-anchored attr match) incl. quoted literals inside WXML ternaries; `scope_class_expr` rewrites literals (incl. template-literal text) in hoisted class expressions (`WxmlOutput::class_hoists`) before `hoisted_deriveds` bakes them into JS. Class names built inside frontmatter functions are not rewritten (documented limit). |
-| `src/main.rs` | ~370 | clap CLI: `mistc build <dir\|file> [-o out] [--app] [--watch]` (notify-based watcher, 120ms debounce, output dir excluded) and `mistc init <name>` (scaffolds src/app.mist + todo page + project.config.json); writes the dist tree, records it in `dist/.mist-manifest` and prunes stale outputs; prints warnings. |
+| `src/main.rs` | ~446 | clap CLI: `mistc build <dir\|file> [-o out] [--app] [--watch]` (notify-based watcher, 120ms debounce, output dir excluded), `mistc init <name>` (scaffolds src/app.mist + todo page + sample test + project.config.json), and `mistc test [dir] [--filter s] [--timeout secs]` (compiles src/ to a temp dir, runs tests/*.test.js via node with the embedded `runtime/mist-test.js` harness — per-file timeout kills hung tests, default 30s — exits non-zero on failure); writes the dist tree, records it in `dist/.mist-manifest` and prunes stale outputs; prints warnings. |
+| `runtime/mist-test.js` | ~154 | The `mistc test` Node harness (embedded via `include_str!`, written into the temp dist as `.mist-test-runner.js`): globals `bootPage(name, {query, setDataLimit})` (requires the compiled page, installs a recording `setData` that applies patches path-precisely and throws over the limit to exercise runtime rollback; returns `{page, data(), patches, lastPatch(), totalBytes()}`), `flush(ms)`, `load(name)`, `resetModules()`, `appHide()`, and a Proxy `wx` stub (Map-backed storage as `wx.__storage`, every other call a recorded no-op in `wx.__calls`). Runs one `tests/*.test.js` file passed as argv, awaiting its `module.exports`. Node-only logic harness — no WXML rendering (see docs/testing.md). |
 | `runtime/mist-rt.js` | ~380 | `set/touch/flush` (microtask-batched setData; `touch(page, name?)` = derive-only flush for unbound state), `derive(page, out, name, key, compute, deps)` (keyed **field-level** diff vs `__prev` snapshots; **per-derived dirty bits** — `deps` from `frontmatter::derived_deps` (resolves through pure methods and store accessors), clean deriveds skipped, changed deriveds re-dirty for chains; `deps` omitted/null ⇒ always recompute; **transactional flush** — mirror/`__prev` roll back if `setData` throws, next flush recomputes all), `applyPath`, `store/bindStores/unbindStores` (cross-page path-precise notifications), `observePerf/perfEntries` (launch metrics, wired into generated `app.js`). |
 
 ### Pipeline (directory build)
@@ -83,6 +84,7 @@ cargo build                                   # debug binary
 cargo run -- build examples/project/src -o dist    # canonical example
 cargo run -- build examples/project/src -o dist --watch   # rebuild on save
 cargo run -- init my-app                      # scaffold a new project
+cargo run -- test my-app                      # run the app's tests/*.test.js in the Node harness
 cargo test                                    # 200+ tests — spawns node, npm, npx
 cargo test --test compile                     # pure-Rust subset (no node needed)
 node benchmark/bench.js                       # bridge-traffic benchmark

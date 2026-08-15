@@ -12,6 +12,7 @@ Mist 是一门**面向微信小程序的组件语言与编译器**：你编写 A
 - **[快速上手](#快速上手)**（就在下方）
 - **[语言指南](language.zh-CN.md)**——文件结构、响应式、模板、组件、store、样式
 - **[API 参考](api.zh-CN.md)**——`'mist'` 可导入的全部内容、命令行、产物说明
+- **[测试](testing.zh-CN.md)**——`mistc test`：在 Node 中启动编译后的页面，对状态与 `setData` payload 大小断言
 - **[诊断说明](diagnostics.zh-CN.md)**——每一个 `M` 编码及修复方法
 
 ## 快速上手
@@ -26,9 +27,10 @@ cargo install --path . && cargo install --path crates/mistc-lsp   # 把 mistc �
 脚手架、构建、迭代：
 
 ```sh
-mistc init my-app              # app.mist + 一个待办页面 + project.config.json
+mistc init my-app              # app.mist + 一个待办页面 + 一个示例测试 + project.config.json
 cd my-app
 mistc build src --watch        # 每次保存自动重编译；ctrl-c 退出
+mistc test                     # 在 Node 测试环境中运行 tests/*.test.js
 # 微信开发者工具 → 导入项目 → 选择 my-app/
 ```
 

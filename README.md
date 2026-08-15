@@ -17,6 +17,7 @@
   <a href="docs/README.md">Getting started</a> ·
   <a href="docs/language.md">Language guide</a> ·
   <a href="docs/api.md">API</a> ·
+  <a href="docs/testing.md">Testing</a> ·
   <a href="docs/diagnostics.md">Diagnostics</a> ·
   <a href="README.zh-CN.md">中文说明</a>
 </p>
@@ -221,7 +222,7 @@ The emitted JS is deliberately readable (WeChat DevTools can't load source maps)
 
 ## Status
 
-Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics, benchmark — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: `[id].mist` route files, npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
+Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics, benchmark — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: `[id].mist` route files, npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
 
 ## Roadmap
 

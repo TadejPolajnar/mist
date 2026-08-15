@@ -63,10 +63,12 @@ WXML 无法求值的模板绑定——函数调用、模板字符串、可选链
 ```
 mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
+mistc test [dir] [--filter <substring>] [--timeout <secs>]
 ```
 
-- **`init`** → 生成 `<name>/`（app.mist、一个待办页面、project.config.json、`mist.d.ts` + `tsconfig.json` + `package.json`，用于编辑器类型提示）。
+- **`init`** → 生成 `<name>/`（app.mist、一个待办页面、一个示例测试、project.config.json、`mist.d.ts` + `tsconfig.json` + `package.json`，用于编辑器类型提示）。
 - **`--watch`** → 每次保存 `.mist`/`.ts` 即重编译（带防抖）。
+- **`test`** → 把 `<dir>/src` 编译到临时目录，并在 Node 测试环境中运行每个 `<dir>/tests/*.test.js`（`bootPage`、`flush`、`setData` payload 记录器、`wx` 桩）。见 [testing.zh-CN.md](testing.zh-CN.md)。需要 Node；任何文件失败则以非零退出码结束。
 
 - **目录** → 项目构建。需要 `<dir>/app.mist` 和 `<dir>/pages/*.mist`（index 是启动页）。组件和 store 通过导入发现。输出使用微信目录布局。
 - **单文件** → 平铺构建一个页面及其导入；`--app` 附带一个最小可打开的应用壳（`App({})`、`app.json`、游客 appid 配置）。

@@ -35,6 +35,7 @@ fn init_scaffolds_a_compilable_project() {
     for f in [
         "src/app.mist",
         "src/pages/index.mist",
+        "tests/index.test.js",
         "project.config.json",
         ".gitignore",
         "mist.d.ts",
@@ -46,6 +47,79 @@ fn init_scaffolds_a_compilable_project() {
     let project = mistc::compile_project_dir(&root.join("src")).expect("scaffold must compile");
     assert!(project.warnings.is_empty(), "scaffold warnings: {:?}", project.warnings);
     assert!(project.files.iter().any(|f| f.is_page));
+}
+
+fn node_available() -> bool {
+    Command::new("node").arg("--version").output().is_ok()
+}
+
+#[test]
+fn test_command_runs_scaffolded_suite() {
+    let dir = std::env::temp_dir().join("mist-cli-test-cmd");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    if !node_available() {
+        eprintln!("skipping: node not available");
+        return;
+    }
+    let root = dir.join("app");
+    let out = Command::new(bin()).arg("test").current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "mistc test failed:\nstdout: {}\nstderr: {}",
+        stdout,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("PASS"), "stdout:\n{}", stdout);
+    assert!(stdout.contains("1 passed, 0 failed"), "stdout:\n{}", stdout);
+
+    std::fs::write(
+        root.join("tests/broken.test.js"),
+        "const assert = require('node:assert');\nmodule.exports = async () => {\n  const app = bootPage('index');\n  assert.equal(app.data().open.length, 99);\n};\n",
+    )
+    .unwrap();
+    let out = Command::new(bin()).arg("test").current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!out.status.success(), "failing suite must exit nonzero:\n{}", stdout);
+    assert!(stdout.contains("FAIL tests/broken.test.js"), "stdout:\n{}", stdout);
+    assert!(stdout.contains("1 passed, 1 failed"), "stdout:\n{}", stdout);
+
+    let out = Command::new(bin())
+        .args(["test", "--filter", "index"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "filter run failed:\n{}", String::from_utf8_lossy(&out.stdout));
+
+    std::fs::write(
+        root.join("tests/broken.test.js"),
+        "module.exports = async () => { setInterval(() => {}, 1000); await new Promise(() => {}); };\n",
+    )
+    .unwrap();
+    let out = Command::new(bin())
+        .args(["test", "--filter", "broken", "--timeout", "1"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "hung test must fail");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("timed out after 1s"),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn test_command_requires_project_layout() {
+    let dir = std::env::temp_dir().join("mist-cli-test-cmd-empty");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("test").current_dir(&dir).output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("src/app.mist"));
 }
 
 #[test]

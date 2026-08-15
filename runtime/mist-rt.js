@@ -84,7 +84,8 @@ function touch(page, name) {
 }
 
 function init(page) {
-  page.setData(page.__derive());
+  const seed = page.__derive();
+  if (Object.keys(seed).length) page.setData(seed);
 }
 
 // `todos[3].done` → ['todos', 3, 'done']

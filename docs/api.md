@@ -83,11 +83,17 @@ Static object literal → the unit's `.json` (page window config, or app-level
 ```
 mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
+mistc test [dir] [--filter <substring>] [--timeout <secs>]
 ```
 
-- **`init`** → scaffolds `<name>/` (app.mist, a todo page, project.config.json,
-  `mist.d.ts` + `tsconfig.json` + `package.json` for editor types).
+- **`init`** → scaffolds `<name>/` (app.mist, a todo page, a sample test,
+  project.config.json, `mist.d.ts` + `tsconfig.json` + `package.json` for
+  editor types).
 - **`--watch`** → rebuilds on every `.mist`/`.ts` save (debounced).
+- **`test`** → compiles `<dir>/src` to a temp dir and runs each
+  `<dir>/tests/*.test.js` in a Node harness (`bootPage`, `flush`, `setData`
+  payload recorder, `wx` stub). See [testing.md](testing.md). Requires Node;
+  exits non-zero on any failing file.
 
 - **Directory** → project build. Requires `<dir>/app.mist` and
   `<dir>/pages/*.mist` (index becomes the launch page). Components and stores

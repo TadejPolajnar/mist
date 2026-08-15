@@ -36,6 +36,18 @@ enum Command {
         #[arg(help = "Project directory to create")]
         name: String,
     },
+    #[command(about = "Compile src/ and run tests/*.test.js in a Node harness")]
+    Test {
+        #[arg(
+            default_value = ".",
+            help = "Project root containing src/ and tests/ (not the src dir itself)"
+        )]
+        dir: PathBuf,
+        #[arg(long, help = "Only run test files whose name contains this substring")]
+        filter: Option<String>,
+        #[arg(long, default_value_t = 30, help = "Per-file timeout in seconds")]
+        timeout: u64,
+    },
 }
 
 fn main() {
@@ -55,10 +67,144 @@ fn main() {
                 exit(1);
             }
         }
+        Command::Test { dir, filter, timeout } => match run_tests(&dir, filter.as_deref(), timeout)
+        {
+            Ok(true) => {}
+            Ok(false) => exit(1),
+            Err(e) => {
+                eprintln!("error: {}", e);
+                exit(1);
+            }
+        },
     }
 }
 
+fn run_node_test(
+    runner: &Path,
+    test: &Path,
+    dist: &Path,
+    timeout_secs: u64,
+) -> Result<(bool, String, String), String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = std::process::Command::new("node")
+        .arg(runner)
+        .arg(test)
+        .env("MIST_DIST", dist)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| "node is required for `mistc test` but was not found".to_string())?;
+    let mut out_pipe = child.stdout.take().unwrap();
+    let mut err_pipe = child.stderr.take().unwrap();
+    let out_thread = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = out_pipe.read_to_string(&mut s);
+        s
+    });
+    let err_thread = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = err_pipe.read_to_string(&mut s);
+        s
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break None;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    };
+    let stdout = out_thread.join().unwrap_or_default();
+    let stderr = err_thread.join().unwrap_or_default();
+    match status {
+        Some(st) => Ok((st.success(), stdout, stderr)),
+        None => {
+            let note = format!("timed out after {}s", timeout_secs);
+            let stderr = if stderr.trim().is_empty() { note } else { format!("{}\n{}", stderr, note) };
+            Ok((false, stdout, stderr))
+        }
+    }
+}
+
+fn run_tests(dir: &Path, filter: Option<&str>, timeout_secs: u64) -> Result<bool, String> {
+    let src = dir.join("src");
+    if !src.join("app.mist").is_file() {
+        return Err(format!("{} has no src/app.mist — run from the project root", dir.display()));
+    }
+    let tests_dir = dir.join("tests");
+    let mut all_tests: Vec<PathBuf> = fs::read_dir(&tests_dir)
+        .map_err(|_| format!("{} has no tests/ directory", dir.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".test.js")))
+        .collect();
+    all_tests.sort();
+    if all_tests.is_empty() {
+        return Err(format!("no *.test.js files in {}", tests_dir.display()));
+    }
+    let test_files: Vec<PathBuf> = match filter {
+        Some(f) => all_tests
+            .into_iter()
+            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(f)))
+            .collect(),
+        None => all_tests,
+    };
+    if test_files.is_empty() {
+        return Err(format!("no test file name matches --filter '{}'", filter.unwrap_or("")));
+    }
+
+    let out = std::env::temp_dir().join(format!("mist-test-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&out);
+    if !run_build_opt(&src, &out, false, true) {
+        return Err("build failed".to_string());
+    }
+    let runner = out.join(".mist-test-runner.js");
+    fs::write(&runner, include_str!("../runtime/mist-test.js")).map_err(|e| e.to_string())?;
+
+    let mut failed = 0;
+    for test in &test_files {
+        let (ok, stdout, stderr) = match run_node_test(&runner, test, &out, timeout_secs) {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = fs::remove_dir_all(&out);
+                return Err(e);
+            }
+        };
+        let name = test.strip_prefix(dir).unwrap_or(test).display();
+        if ok {
+            println!("PASS {}", name);
+            if !stdout.trim().is_empty() {
+                println!("{}", stdout.trim_end());
+            }
+        } else {
+            failed += 1;
+            println!("FAIL {}", name);
+            if !stdout.trim().is_empty() {
+                println!("{}", stdout.trim_end());
+            }
+            if !stderr.trim().is_empty() {
+                eprintln!("{}", stderr.trim_end());
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&out);
+    println!("{} passed, {} failed", test_files.len() - failed, failed);
+    Ok(failed == 0)
+}
+
 fn run_build(input: &Path, outdir: &Path, emit_app: bool) -> bool {
+    run_build_opt(input, outdir, emit_app, false)
+}
+
+fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bool {
     let project = if input.is_dir() {
         mistc::compile_project_dir(input)
     } else {
@@ -122,7 +268,9 @@ fn run_build(input: &Path, outdir: &Path, emit_app: bool) -> bool {
         } else {
             ""
         };
-        println!("  {}{}", f.out_path, tag);
+        if !quiet {
+            println!("  {}{}", f.out_path, tag);
+        }
     }
     emit(&mut written, "mist-rt.js".into(), mistc::RUNTIME);
 
@@ -179,7 +327,9 @@ fn run_build(input: &Path, outdir: &Path, emit_app: bool) -> bool {
     }
 
     prune_stale(outdir, &written);
-    println!("compiled {} file(s) → {}/", files.len(), outdir.display());
+    if !quiet {
+        println!("compiled {} file(s) → {}/", files.len(), outdir.display());
+    }
     true
 }
 
@@ -331,6 +481,9 @@ fn init_project(name: &str) -> Result<(), String> {
     let index = "---\nimport { state, derived } from 'mist'\n\nexport const config = { navigationBarTitleText: 'Todos' }\n\nconst todos = state([\n  { id: 1, title: 'Try mist', done: false },\n  { id: 2, title: 'Read the docs', done: false },\n])\nconst open = derived(() => todos.value.filter(t => !t.done))\n\nfunction toggle(id) {\n  const i = todos.value.findIndex(t => t.id === id)\n  todos.value[i].done = !todos.value[i].done\n}\n\nfunction add() {\n  todos.value.push({ id: todos.value.length + 1, title: `Todo ${todos.value.length + 1}`, done: false })\n}\n---\n<div class=\"p-4 flex flex-col gap-2\">\n  <span class=\"text-xl font-bold\">{open.value.length} open</span>\n  {todos.value.map(t => (\n    <div key={t.id} class=\"flex gap-2 p-2 bg-white rounded\" onTap={() => toggle(t.id)}>\n      <span>{t.done ? '✓' : '○'}</span>\n      <span>{t.title}</span>\n    </div>\n  ))}\n  <button class=\"rounded bg-blue-500 text-white p-2\" onTap={add}>Add todo</button>\n</div>\n";
     fs::write(src.join("app.mist"), app).map_err(|e| e.to_string())?;
     fs::write(src.join("pages").join("index.mist"), index).map_err(|e| e.to_string())?;
+    fs::create_dir_all(root.join("tests")).map_err(|e| e.to_string())?;
+    let test = "const assert = require('node:assert');\n\nmodule.exports = async () => {\n  const app = bootPage('index');\n  assert.equal(app.data().open.length, 2);\n\n  app.page.toggle(1);\n  await flush();\n  assert.equal(app.data().open.length, 1);\n  assert.ok(app.lastPatch().size < 300, `toggle patch too large: ${app.lastPatch().size} bytes`);\n\n  app.page.add();\n  await flush();\n  assert.equal(app.data().todos.length, 3);\n};\n";
+    fs::write(root.join("tests").join("index.test.js"), test).map_err(|e| e.to_string())?;
     fs::write(
         root.join("project.config.json"),
         "{\n  \"appid\": \"touristappid\",\n  \"compileType\": \"miniprogram\",\n  \"miniprogramRoot\": \"dist/\",\n  \"setting\": { \"es6\": true }\n}\n",
@@ -356,11 +509,13 @@ fn init_project(name: &str) -> Result<(), String> {
     println!("created {}/", name);
     println!("  src/app.mist");
     println!("  src/pages/index.mist");
+    println!("  tests/index.test.js");
     println!("  project.config.json");
     println!("  mist.d.ts + tsconfig.json   (editor types for 'mist')");
     println!();
     println!("next:");
     println!("  cd {} && mistc build src --watch", name);
+    println!("  mistc test                   # run tests/*.test.js in a Node harness");
     println!("  npm install                  # optional: wx.* types for your editor");
     println!("  WeChat DevTools → Import Project → select {}/", name);
     Ok(())
