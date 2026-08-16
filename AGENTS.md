@@ -14,14 +14,14 @@ thesis (49 B/toggle in the Node harness, 26 B on-device, guarded by `tests/bench
 
 ## Architecture map
 
-~8.4k lines of Rust (8,435 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
+~8.7k lines of Rust (8,669 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
 (bump in lockstep; span semantics are load-bearing) + `regex`. No serde — JSON is
 hand-emitted.
 
 | Module | Lines | Owns |
 |---|---|---|
-| `src/lib.rs` | ~1264 | Orchestration: `compile_project_dir` (directory → `Layout::Nested`), `compile_project` (entry file → `Layout::Flat`), `compile_rec` (per-unit recursion, inline decisions, store compilation, style merging), `assemble_wxss`, `build_json`. Embeds the runtime via `include_str!("../runtime/mist-rt.js")`. |
-| `src/frontmatter.rs` | ~3232 | The heart. oxc-parses frontmatter TS; `Analysis` (states/deriveds/methods/lifecycles/props/imports/store_imports/config); **span-based rewriting** (never AST codegen): `MutationCollector` (oxc `Visit`) produces precise `Edit`s for writes, `Rewriter` regex-sweeps reads/calls; `emit_js` (Page/Component), `emit_app_js`, `compile_store_module`, `config_literal_to_json`. Also **dead-data elimination** (`StateDecl::bound` — state the template never reads becomes `this._x`, never entering `data`) and `hoisted_deriveds` (generated deriveds for hoisted template expressions). |
+| `src/lib.rs` | ~1411 | Orchestration: `compile_project_dir` (directory → `Layout::Nested`), `compile_project` (entry file → `Layout::Flat`), `compile_rec` (per-unit recursion, inline decisions, store compilation, style merging), `assemble_wxss`, `build_json`. Embeds the runtime via `include_str!("../runtime/mist-rt.js")`. |
+| `src/frontmatter.rs` | ~3291 | The heart. oxc-parses frontmatter TS; `Analysis` (states/deriveds/methods/lifecycles/props/imports/store_imports/config); **span-based rewriting** (never AST codegen): `MutationCollector` (oxc `Visit`) produces precise `Edit`s for writes, `Rewriter` regex-sweeps reads/calls; `emit_js` (Page/Component), `emit_app_js`, `compile_store_module`, `config_literal_to_json`. Also **dead-data elimination** (`StateDecl::bound` — state the template never reads becomes `this._x`, never entering `data`) and `hoisted_deriveds` (generated deriveds for hoisted template expressions). |
 | `src/template.rs` | ~975 | Hand-rolled recursive-descent template parser → `Node` tree (`Element/Text/Expr/For/If`); `.map()`→For, `&&`→If via top-level-aware scanning; `wx:key` validation (M1003); tree queries (`for_lists`, `has_slot`, `has_events`). |
 | `src/wxml.rs` | ~842 | WXML emission: tag mapping (`div`→`view`…, `a href`→`navigator url`), event compilation (`onTap[:catch\|:mut]`, inline arrows → `_eN` handlers + `data-a*`), component vs inline-template use sites, class sanitization routing, **`value:bind`** (→ `model:value` + `__vb_<name>` handler), **`class:list`** (string/`cond && 'x'`/object entries → one class attr with WXML ternaries; exclusive with `class`), **expression hoisting** (page-scope `_h<i>`, per-item `_hl<i>` lists carrying `_c<i>` computed fields). `Handler` is the wxml↔js contract. |
 | `src/tailwind.rs` | ~210 | Class extraction from templates + name sanitization (`w-[32px]`→`w-_32px_`) — must stay byte-identical between markup and CSS selectors. |
@@ -29,7 +29,7 @@ hand-emitted.
 | `src/sfc.rs` | ~51 | Splits `---` frontmatter / template / `<style>`; parses `<style scoped>`; records 1-based line offsets so diagnostics report real file positions. |
 | `src/scope.rs` | ~237 | `<style scoped>`: per-unit class suffixing (`.card`→`.card--<name>`) applied identically to WXSS selectors (comments stripped first; recursing into `@media`/`@supports`, skipping `@keyframes`) and to markup `class`/`hover-class`/`placeholder-class` values (space-anchored attr match) incl. quoted literals inside WXML ternaries; `scope_class_expr` rewrites literals (incl. template-literal text) in hoisted class expressions (`WxmlOutput::class_hoists`) before `hoisted_deriveds` bakes them into JS. Class names built inside frontmatter functions are not rewritten (documented limit). |
 | `src/tag_meta.rs` | ~429 | Hand-curated per-tag metadata for ~25 everyday native components (spike 028 fallback A — miniprogram-api-typings has no per-component attribute tables): `TagMeta { tag, attrs, events }`, `COMMON_EVENTS` (camelCase, matched lowercase so M1023 suggestions read as `onScrollToLower`), `UNIVERSAL_ATTRS`, `meta_for`/`valid_*`/`suggest_*` (Levenshtein ≤2). Absent tags skip validation — staleness never breaks builds. Shared surface for the compiler warnings and (future) LSP completions. |
-| `src/main.rs` | ~446 | clap CLI: `mistc build <dir\|file> [-o out] [--app] [--watch]` (notify-based watcher, 120ms debounce, output dir excluded), `mistc init <name>` (scaffolds src/app.mist + todo page + sample test + project.config.json), and `mistc test [dir] [--filter s] [--timeout secs]` (compiles src/ to a temp dir, runs tests/*.test.js via node with the embedded `runtime/mist-test.js` harness — per-file timeout kills hung tests, default 30s — exits non-zero on failure); writes the dist tree, records it in `dist/.mist-manifest` and prunes stale outputs; prints warnings. |
+| `src/main.rs` | ~539 | clap CLI: `mistc build <dir\|file> [-o out] [--app] [--watch]` (notify-based watcher, 120ms debounce, output dir excluded), `mistc init <name>` (scaffolds src/app.mist + todo page + sample test + project.config.json), and `mistc test [dir] [--filter s] [--timeout secs]` (compiles src/ to a temp dir, runs tests/*.test.js via node with the embedded `runtime/mist-test.js` harness — per-file timeout kills hung tests, default 30s — exits non-zero on failure); writes the dist tree, records it in `dist/.mist-manifest` and prunes stale outputs; prints warnings. |
 | `runtime/mist-test.js` | ~154 | The `mistc test` Node harness (embedded via `include_str!`, written into the temp dist as `.mist-test-runner.js`): globals `bootPage(name, {query, setDataLimit})` (requires the compiled page, installs a recording `setData` that applies patches path-precisely and throws over the limit to exercise runtime rollback; returns `{page, data(), patches, lastPatch(), totalBytes()}`), `flush(ms)`, `load(name)`, `resetModules()`, `appHide()`, and a Proxy `wx` stub (Map-backed storage as `wx.__storage`, every other call a recorded no-op in `wx.__calls`). Runs one `tests/*.test.js` file passed as argv, awaiting its `module.exports`. Node-only logic harness — no WXML rendering (see docs/testing.md). |
 | `runtime/mist-rt.js` | ~380 | `set/touch/flush` (microtask-batched setData; `touch(page, name?)` = derive-only flush for unbound state), `derive(page, out, name, key, compute, deps)` (keyed **field-level** diff vs `__prev` snapshots; **per-derived dirty bits** — `deps` from `frontmatter::derived_deps` (resolves through pure methods and store accessors), clean deriveds skipped, changed deriveds re-dirty for chains; `deps` omitted/null ⇒ always recompute; **transactional flush** — mirror/`__prev` roll back if `setData` throws, next flush recomputes all), `applyPath`, `store/bindStores/unbindStores` (cross-page path-precise notifications), `observePerf/perfEntries` (launch metrics, wired into generated `app.js`). |
 
@@ -37,6 +37,8 @@ hand-emitted.
 
 ```
 main.rs → compile_project_dir: read app.mist, discover pages/*.mist (index first),
+  discover pages/<dir>/[<param>].mist route-param pages (discover_route_param_pages;
+  error on collision with pages/<dir>.mist; repeated per subpackage),
   warn M1016 on dropped pages/<dir>/*.mist, discover src/packages/<pkg>/pages/*.mist
   (each pkg validated: alphanumeric/-/_, not a reserved dist path),
   discover optional src/custom-tab-bar.mist (compiled at forced out_path
@@ -187,7 +189,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    instead when that's statically extractable via
    `frontmatter::config_tab_bar_page_paths`; flat/single-file builds compile
    `navigate()` calls with no route-list check at all — no route set exists).
-   M1001–M1024 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`).
+   M1001–M1025 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`).
    Frontmatter TS is type-stripped (`strip_types`, whitespace-
    preserving blanking) before analysis, so annotations never reach emitted JS.
    `tests/diagnostics.rs` asserts on message substrings — reformatting breaks it.
@@ -240,7 +242,7 @@ analysis — scope-aware `BindingScope` tracking: innermost binding wins,
 rebinds cancel, covers for-of and iterator-callback params).
 
 **Design-only (do not assume these exist):** static *subtree*
-hoisting (§8.4 — distinct from §4.2 expression hoisting, which ships); setData budget chunking; `[id].mist` route files;
+hoisting (§8.4 — distinct from §4.2 expression hoisting, which ships); setData budget chunking;
 `mist.config.ts` as a file; `<style global>`
 (`<style scoped>` ships — per-unit `--<name>` suffixing in `src/scope.rs`);
 `mist trace`; package-size budgets; npm interop;
@@ -256,5 +258,11 @@ type — `types/mist.d.ts` (the static `init` scaffold) deliberately does
 **not** declare `navigate`, because a second looser `declare module 'mist'`
 augmentation of the same function silently wins over the generated file's
 narrow `Route` union (confirmed with `tsc`) instead of erroring or
-intersecting — so `navigate` exists only in the generated file today. `[id].mist`
-route files remain out of scope.
+intersecting — so `navigate` exists only in the generated file today.
+`[id].mist` route files ship: `pages/<dir>/[<param>].mist` compiles to
+`pages/<dir>/<dir>` with a generated missing-param guard + query seeding
+(`emit_js_route`) and a `RouteParams` entry in `mist-routes.d.ts` (M1025 when
+the param state is missing; collision with `pages/<dir>.mist` is an error).
+SPEC §7's `navigate('/pages/todo/[id]', …)` example predates this design and
+does not work — the route argument is always the plain compiled path
+(`/pages/todo/todo`); brackets never survive into routes.

@@ -376,3 +376,16 @@ const items = state(INITIAL)               // ✓ const 初始值在任何地方
 表里还不认识的属性（微信每季度都会新增）可以用
 `config.customAttrs = ['the-new-attr']` 放行——过期永远不会破坏构建；
 两个代码都只是警告。
+
+## M1025 —— 路由参数页面缺少对应的 state
+
+`pages/<dir>/[<param>].mist` 路由页面必须把参数声明为 state——编译器负责
+从查询参数注入并守卫缺参，但声明由你来写（它确定类型和初始值）：
+
+```ts
+// pages/item/[id].mist
+const id = state('')          // ✓ 在 onLoad 运行前从查询参数注入
+```
+
+没有它，参数无处存放——报 M1025，并附上要添加的确切声明。查询参数是
+字符串；需要数字时在 `derived` 里转换。

@@ -317,6 +317,12 @@ fn routes_dts_written_next_to_existing_mist_dts() {
         "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
     )
     .unwrap();
+    std::fs::create_dir_all(dir.join("src/pages/item")).unwrap();
+    std::fs::write(
+        dir.join("src/pages/item/[id].mist"),
+        "---\nimport {{ state }} from 'mist'\nconst id = state('')\n---\n<span>{{id.value}}</span>\n".replace("{{", "{").replace("}}", "}"),
+    )
+    .unwrap();
     std::fs::write(dir.join("mist.d.ts"), "declare module 'mist' {}\n").unwrap();
     let out_dir = dir.join("dist");
     let out = Command::new(bin()).args(["build", "src", "-o", "dist"]).current_dir(&dir).output().unwrap();
@@ -330,6 +336,13 @@ fn routes_dts_written_next_to_existing_mist_dts() {
     assert!(content.contains("\"/packages/shop/pages/cart/cart\""), "content:\n{}", content);
     assert!(content.contains("export function navigate"), "content:\n{}", content);
     assert!(content.contains("function switchTab"), "content:\n{}", content);
+    assert!(content.contains("\"/pages/item/item\""), "content:\n{}", content);
+    assert!(
+        content.contains("\"/pages/item/item\": { id: string | number };"),
+        "content:\n{}",
+        content
+    );
+    assert!(content.contains("keyof RouteParams"), "content:\n{}", content);
 
     // never in dist, never in the manifest
     assert!(!out_dir.join("mist-routes.d.ts").exists(), "must not be emitted into dist/");

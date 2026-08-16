@@ -392,3 +392,18 @@ present in the metadata table; `data-*`, `aria-*`, namespaced attrs
 An attribute the table doesn't know yet (WeChat ships new ones quarterly) can
 be allowed with `config.customAttrs = ['the-new-attr']` — staleness never
 breaks a build; both codes are warnings.
+
+## M1025 — route-param page missing its state
+
+A `pages/<dir>/[<param>].mist` route page must declare the param as state —
+the compiler seeds it from the query and guards against missing params, but
+the declaration is yours (it fixes the type and the initial value):
+
+```ts
+// pages/item/[id].mist
+const id = state('')          // ✓ seeded from the query before onLoad runs
+```
+
+Without it the page has nowhere to put the param — M1025, with the exact
+declaration to add. Query params are strings; convert in a `derived` if you
+need a number.

@@ -171,6 +171,20 @@ fn compile_unit_full(
     scope_name: &str,
     resolve_store: &dyn Fn(&str) -> Option<frontmatter::StoreModuleInfo>,
 ) -> Result<Unit, String> {
+    compile_unit_full_route(source, is_page, inline, layout, depth, scope_name, None, resolve_store)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_unit_full_route(
+    source: &str,
+    is_page: bool,
+    inline: &[String],
+    layout: Layout,
+    depth: usize,
+    scope_name: &str,
+    route_param: Option<&str>,
+    resolve_store: &dyn Fn(&str) -> Option<frontmatter::StoreModuleInfo>,
+) -> Result<Unit, String> {
     let sfc = sfc::split(source)?;
     let mut analysis = frontmatter::analyze_with_stores_bound(sfc.frontmatter, resolve_store, sfc.frontmatter_line, Some(sfc.template))?;
     for si in &mut analysis.store_imports {
@@ -353,9 +367,21 @@ fn compile_unit_full(
         derived_keys.push(key);
     }
 
+    let route_seed = match route_param {
+        Some(param) => match analysis.states.iter().find(|s| s.name == param) {
+            Some(state) => Some((param, state.bound)),
+            None => {
+                return Err(format!(
+                    "M1025: [{param}].mist declares route param '{param}' but the frontmatter has no `const {param} = state(...)` — declare it; the compiler seeds it from the query",
+                    param = param
+                ));
+            }
+        },
+        None => None,
+    };
     let multiple_slots = !is_page && template::has_named_slot(&nodes);
     let const_seeds = template_const_refs(&wxml_out.wxml, &analysis.plain_consts);
-    let js = frontmatter::emit_js(
+    let js = frontmatter::emit_js_route(
         &analysis,
         &wxml_out.handlers,
         &derived_keys,
@@ -364,6 +390,7 @@ fn compile_unit_full(
         &layout.rt_require(depth),
         &wxml_out.vbinds,
         &const_seeds,
+        route_seed,
     );
 
     let import_path_of = |local: &String| -> Option<String> {
@@ -578,6 +605,8 @@ pub struct CompiledFile {
     pub output: Output,
     /// this unit's `navigate(...)` literal-route call sites, for late M1021 validation
     pub route_refs: Vec<frontmatter::RouteRef>,
+    /// `[param].mist` route pages: the declared query param (drives typed routes)
+    pub route_param: Option<String>,
 }
 
 #[derive(Debug)]
@@ -637,12 +666,37 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
             pages_dir.display()
         ));
     }
+    if let Some(stray) = page_paths.iter().find(|p| route_param_of(p).is_some()) {
+        let param = route_param_of(stray).unwrap_or_default();
+        return Err(format!(
+            "pages/[{param}].mist must live in a page directory — move it to pages/<name>/[{param}].mist",
+            param = param
+        ));
+    }
 
     let mut ctx = new_project_ctx(Layout::Nested);
     ctx.theme = std::fs::read_to_string(src.join("theme.css")).ok();
     warn_dropped_mist_subdirs(&pages_entries, "pages", &mut ctx);
     for page in &page_paths {
         compile_rec(page, UnitKind::Page, DEFAULT_DEPTH, None, &mut ctx)?;
+    }
+    for (path, page_name, param) in discover_route_param_pages(&pages_entries, "pages")? {
+        if page_paths.iter().any(|p| p.file_stem().is_some_and(|s| s == page_name.as_str())) {
+            return Err(format!(
+                "pages/{name}.mist and pages/{name}/[{param}].mist both compile to pages/{name}/{name} — keep one",
+                name = page_name,
+                param = param
+            ));
+        }
+        compile_rec_at(
+            &path,
+            UnitKind::Page,
+            DEFAULT_DEPTH,
+            None,
+            None,
+            Some((&page_name, &param)),
+            &mut ctx,
+        )?;
     }
 
     let packages_dir = src.join("packages");
@@ -673,6 +727,30 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
             for page in &pkg_page_paths {
                 compile_rec(page, UnitKind::Page, SUBPKG_DEPTH, Some(&pkg), &mut ctx)?;
             }
+            for (path, page_name, param) in
+                discover_route_param_pages(&pkg_pages_entries, &format!("packages/{}/pages", pkg))?
+            {
+                if pkg_page_paths
+                    .iter()
+                    .any(|p| p.file_stem().is_some_and(|s| s == page_name.as_str()))
+                {
+                    return Err(format!(
+                        "packages/{pkg}/pages/{name}.mist and packages/{pkg}/pages/{name}/[{param}].mist both compile to the same page — keep one",
+                        pkg = pkg,
+                        name = page_name,
+                        param = param
+                    ));
+                }
+                compile_rec_at(
+                    &path,
+                    UnitKind::Page,
+                    SUBPKG_DEPTH,
+                    Some(&pkg),
+                    None,
+                    Some((&page_name, &param)),
+                    &mut ctx,
+                )?;
+            }
         }
     }
 
@@ -685,6 +763,7 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
             CUSTOM_TAB_BAR_DEPTH,
             None,
             Some("custom-tab-bar/index"),
+            None,
             &mut ctx,
         )?;
     }
@@ -741,12 +820,70 @@ fn dir_contains_mist(dir: &Path) -> bool {
 /// the pages root — those files are silently dropped from compilation.
 /// `label` is the pages-root path relative to `src`, e.g. `pages` or
 /// `packages/shop/pages`.
+fn route_param_of(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    let inner = stem.strip_prefix('[')?.strip_suffix(']')?;
+    let mut chars = inner.chars();
+    let first = chars.next()?;
+    if !(first.is_alphabetic() || first == '_') || !chars.all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    Some(inner.to_string())
+}
+
+/// `pages/<dir>/[<param>].mist` route-param pages: returns (page path, page
+/// name, param) per qualifying dir. Errors on two bracket files in one dir.
+fn discover_route_param_pages(
+    pages_entries: &[PathBuf],
+    label: &str,
+) -> Result<Vec<(PathBuf, String, String)>, String> {
+    let mut out = Vec::new();
+    for dir_entry in pages_entries.iter().filter(|p| p.is_dir()) {
+        let name = dir_entry.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let Ok(entries) = std::fs::read_dir(dir_entry) else { continue };
+        let mut found: Vec<(PathBuf, String)> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|e| e == "mist"))
+            .filter_map(|p| route_param_of(&p).map(|param| (p, param)))
+            .collect();
+        found.sort();
+        if found.len() > 1 {
+            return Err(format!(
+                "{}/{}/ has more than one [param].mist file — a page directory takes exactly one",
+                label, name
+            ));
+        }
+        if let Some((path, param)) = found.pop() {
+            out.push((path, name, param));
+        }
+    }
+    Ok(out)
+}
+
 fn warn_dropped_mist_subdirs(pages_entries: &[PathBuf], label: &str, ctx: &mut ProjectCtx) {
     for dir_entry in pages_entries.iter().filter(|p| p.is_dir()) {
-        if dir_contains_mist(dir_entry) {
+        let has_route_page = std::fs::read_dir(dir_entry)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok().map(|e| e.path()))
+                    .any(|p| route_param_of(&p).is_some())
+            })
+            .unwrap_or(false);
+        let dropped_others = std::fs::read_dir(dir_entry)
+            .map(|entries| {
+                entries.filter_map(|e| e.ok().map(|e| e.path())).any(|p| {
+                    (p.extension().is_some_and(|e| e == "mist") && route_param_of(&p).is_none())
+                        || (p.is_dir() && dir_contains_mist(&p))
+                })
+            })
+            .unwrap_or(false);
+        if has_route_page && !dropped_others {
+            continue;
+        }
+        if dir_contains_mist(dir_entry) && (!has_route_page || dropped_others) {
             let name = dir_entry.file_name().unwrap_or_default().to_string_lossy().to_string();
             ctx.warnings.push(format!(
-                "M1016: {}/{}/ contains .mist files that are not compiled — pages must sit directly in pages/, or in packages/<pkg>/pages/ for subpackages",
+                "M1016: {}/{}/ contains .mist files that are not compiled — pages must sit directly in pages/, in packages/<pkg>/pages/ for subpackages, or be a single [param].mist route page",
                 label, name
             ));
         }
@@ -1047,7 +1184,7 @@ fn compile_rec(
     package: Option<&str>,
     ctx: &mut ProjectCtx,
 ) -> Result<(), String> {
-    compile_rec_at(path, kind, depth, package, None, ctx)
+    compile_rec_at(path, kind, depth, package, None, None, ctx)
 }
 
 /// `forced_out_path`: overrides the computed `out_path` for this unit only —
@@ -1059,6 +1196,7 @@ fn compile_rec_at(
     depth: usize,
     package: Option<&str>,
     forced_out_path: Option<&str>,
+    route: Option<(&str, &str)>,
     ctx: &mut ProjectCtx,
 ) -> Result<(), String> {
     let canonical = path.canonicalize().map_err(|e| format!("cannot resolve {}: {}", path.display(), e))?;
@@ -1070,7 +1208,11 @@ fn compile_rec_at(
     let source = std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path.display(), e))?;
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
     let is_page = kind == UnitKind::Page;
-    let name = if is_page { stem.clone() } else { wxml::kebab(&stem) };
+    let name = match route {
+        Some((page_name, _)) => page_name.to_string(),
+        None if is_page => stem.clone(),
+        None => wxml::kebab(&stem),
+    };
 
     if kind == UnitKind::Template {
         let unit = compile_template_unit(&source, &name).map_err(|e| format!("{}: {}", path.display(), e))?;
@@ -1088,6 +1230,7 @@ fn compile_rec_at(
             package: None,
             output: unit.output,
             route_refs: Vec::new(),
+            route_param: None,
         });
         return Ok(());
     }
@@ -1111,8 +1254,17 @@ fn compile_rec_at(
             }
         }
     }
-    let unit = compile_unit_full(&source, is_page, &inline, ctx.layout, depth, &name, &resolver)
-        .map_err(|e| format!("{}: {}", path.display(), e))?;
+    let unit = compile_unit_full_route(
+        &source,
+        is_page,
+        &inline,
+        ctx.layout,
+        depth,
+        &name,
+        route.map(|(_, p)| p),
+        &resolver,
+    )
+    .map_err(|e| format!("{}: {}", path.display(), e))?;
     for c in &unit.classes {
         ctx.class_sources.entry(c.clone()).or_insert_with(|| path.display().to_string());
     }
@@ -1151,6 +1303,7 @@ fn compile_rec_at(
             package: None,
             output: Output { wxml: String::new(), js, wxss: String::new(), json: None },
             route_refs: Vec::new(),
+            route_param: None,
         });
     }
 
@@ -1193,6 +1346,7 @@ fn compile_rec_at(
         package: package.map(str::to_string),
         output,
         route_refs,
+        route_param: route.map(|(_, p)| p.to_string()),
     });
     Ok(())
 }

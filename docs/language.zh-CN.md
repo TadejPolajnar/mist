@@ -494,8 +494,28 @@ onShow(() => {
 
 只支持这两个属性。任何其他 `<ident>:bind`（例如 `foo:bind`）都是编译错误。`.mist` 子组件上的双向绑定（自定义组件上的 `model:`）尚不支持。
 
+## 路由参数页面——`pages/item/[id].mist`
+
+详情页可以在文件名里声明它的查询参数：`pages/item/[id].mist` 编译为普通
+路由 `pages/item/item`（微信没有动态路径——这只是**查询参数之上的语法
+糖**，仅此而已）。frontmatter 必须声明 `const id = state(...)`；编译器随后
+生成每个详情页原本要手写的东西：
+
+- **缺参守卫**——`onLoad` 没有收到 `id` 时打印错误并 `wx.navigateBack()`，
+  而不是渲染一个坏页面；
+- **注入**——在你的 `onLoad`（通常不再需要）运行之前，`id.value` 已从
+  查询参数设置好；
+- **类型化路由条目**——`mist-routes.d.ts` 获得 `RouteParams` 条目，
+  `navigate('/pages/item/item', { id })` 必须传参，不传是类型错误。
+
+查询参数到达时是字符串——需要数字时在 `derived` 里转换。每个目录只允许
+一个 `[param].mist`；`pages/item.mist` 与 `pages/item/[id].mist` 并存是
+编译错误（它们会冲突）。分包同样可用
+（`packages/<pkg>/pages/<dir>/[id].mist`）。见 examples/portfolio 的持仓
+详情页。
+
 ## 尚未支持（路线图——这些功能今天会给出明确的错误）
 
-`[id].mist` 基于文件的路由参数（查询字符串 + `onLoad(({id}) => …)` 今天可用——见 examples/ledger 的详情页）、嵌套循环内的调用（M1009）、frontmatter 中的 npm 导入（报错拒绝——只能导入 `mist`、store 模块和 `.mist` 组件）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
+嵌套循环内的调用（M1009）、frontmatter 中的 npm 导入（报错拒绝——只能导入 `mist`、store 模块和 `.mist` 组件）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
 
 TypeScript 注解（参数/返回类型、`interface`、`type`、`as`、泛型、`import type`）在生成前被剥离——放心添加注解；它们都不会进入生成的 JS。`enum` 是例外：它是运行时构造，会被拒绝并附带修复提示（请使用 const 对象或字符串字面量联合类型）。

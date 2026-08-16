@@ -956,3 +956,124 @@ fn app_style_rejects_scoped() {
     let err = mistc::compile_project_dir(&dir).unwrap_err();
     assert!(err.contains("cannot be scoped"), "err: {}", err);
 }
+
+#[test]
+fn route_param_page_compiles_with_guard_and_seed() {
+    let dir = std::env::temp_dir().join("mist-route-param");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages/item")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/item/[id].mist"),
+        "---\nimport { state } from 'mist'\nconst id = state('')\n---\n<span>{id.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    assert!(p.warnings.is_empty(), "warnings: {:?}", p.warnings);
+    let item = p.files.iter().find(|f| f.out_path == "pages/item/item").expect("route page missing");
+    assert!(item.is_page);
+    assert_eq!(item.route_param.as_deref(), Some("id"));
+    assert!(item.output.js.contains("onLoad(__q)"), "js:\n{}", item.output.js);
+    assert!(item.output.js.contains("__q.id === undefined"), "js:\n{}", item.output.js);
+    assert!(item.output.js.contains("wx.navigateBack"), "js:\n{}", item.output.js);
+    assert!(item.output.js.contains("this.__set('id', __q.id)"), "js:\n{}", item.output.js);
+    let app = p.app.expect("app missing");
+    assert!(app.json.contains("pages/item/item"), "app.json:\n{}", app.json);
+}
+
+#[test]
+fn route_param_page_wraps_user_on_load() {
+    let dir = std::env::temp_dir().join("mist-route-param-onload");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages/item")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/item/[id].mist"),
+        "---\nimport { state, onLoad } from 'mist'\nconst id = state('')\nconst extra = state('')\nonLoad((q) => {\n  extra.value = q.from || ''\n})\n---\n<span>{id.value}{extra.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    let item = p.files.iter().find(|f| f.out_path == "pages/item/item").unwrap();
+    assert!(item.output.js.contains("__q.id === undefined"), "js:\n{}", item.output.js);
+    assert!(item.output.js.contains("this.__set('id', __q.id)"), "js:\n{}", item.output.js);
+    assert!(item.output.js.contains(")(__q);"), "user onLoad must still run:\n{}", item.output.js);
+    assert!(item.output.js.contains("q.from"), "user body must survive:\n{}", item.output.js);
+}
+
+#[test]
+fn route_param_page_requires_matching_state() {
+    let dir = std::env::temp_dir().join("mist-route-param-missing-state");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages/item")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/item/[id].mist"),
+        "---\nimport { state } from 'mist'\nconst other = state('')\n---\n<span>{other.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("M1025"), "err: {}", err);
+    assert!(err.contains("const id = state("), "err: {}", err);
+}
+
+#[test]
+fn route_param_page_rejected_at_pages_top_level() {
+    let dir = std::env::temp_dir().join("mist-route-param-top-level");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    let page = "---\nimport { state } from 'mist'\nconst id = state('')\n---\n<span>{id.value}</span>\n";
+    std::fs::write(dir.join("pages/index.mist"), page).unwrap();
+    std::fs::write(dir.join("pages/[id].mist"), page).unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("must live in a page directory"), "err: {}", err);
+}
+
+#[test]
+fn route_param_page_collides_with_flat_page() {
+    let dir = std::env::temp_dir().join("mist-route-param-collision");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages/item")).unwrap();
+    let page = "---\nimport { state } from 'mist'\nconst id = state('')\n---\n<span>{id.value}</span>\n";
+    std::fs::write(dir.join("pages/index.mist"), page).unwrap();
+    std::fs::write(dir.join("pages/item.mist"), page).unwrap();
+    std::fs::write(dir.join("pages/item/[id].mist"), page).unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("both compile to"), "err: {}", err);
+}

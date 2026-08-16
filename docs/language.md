@@ -637,10 +637,31 @@ Only these two properties are supported. Any other `<ident>:bind` (for
 example `foo:bind`) is a compile error. Two-way binding on `.mist` child
 components (`model:` on a custom component) is not supported yet.
 
+## Route-param pages — `pages/item/[id].mist`
+
+A detail page can declare its query param in the filename:
+`pages/item/[id].mist` compiles to the ordinary route `pages/item/item`
+(WeChat has no dynamic paths — this is **sugar over query params**, nothing
+more). The frontmatter must declare `const id = state(...)`; the compiler
+then generates what every detail page otherwise hand-writes:
+
+- a **missing-param guard** — `onLoad` without `id` logs an error and
+  `wx.navigateBack()`s instead of rendering a broken page;
+- **seeding** — `id.value` is set from the query before your `onLoad` body
+  (which you usually no longer need) runs;
+- a **typed route entry** — `mist-routes.d.ts` gains a `RouteParams` entry, so
+  `navigate('/pages/item/item', { id })` requires the param and
+  `navigate('/pages/item/item')` is a type error.
+
+Query params arrive as strings — convert in a `derived` if you need numbers.
+One `[param].mist` per directory; `pages/item.mist` alongside
+`pages/item/[id].mist` is a compile error (they'd collide). Works in
+subpackages too (`packages/<pkg>/pages/<dir>/[id].mist`). See
+examples/portfolio's position page.
+
 ## Not yet (roadmap — these error cleanly today)
 
-`[id].mist` file-based route params (query strings + `onLoad(({id}) => …)` work
-today — see examples/ledger's detail page), calls in nested loops (M1009),
+Calls in nested loops (M1009),
 npm imports in frontmatter (rejected with an error — only
 `mist`, store modules and `.mist` components import). Tab bar/window config:
 put `tabBar` in `app.mist`'s `config` — no separate config file needed.

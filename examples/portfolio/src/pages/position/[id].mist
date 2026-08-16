@@ -1,10 +1,10 @@
 ---
-import Cell from '../components/Cell.mist'
-import SectionHeader from '../components/SectionHeader.mist'
-import EmptyState from '../components/EmptyState.mist'
-import Tag from '../components/Tag.mist'
-import { market, trade } from '../stores/market.ts'
-import { state, derived, onLoad } from 'mist'
+import Cell from '../../components/Cell.mist'
+import SectionHeader from '../../components/SectionHeader.mist'
+import EmptyState from '../../components/EmptyState.mist'
+import Tag from '../../components/Tag.mist'
+import { market, trade } from '../../stores/market.ts'
+import { state, derived } from 'mist'
 
 export const config = { navigationBarTitleText: '持仓详情' }
 
@@ -69,9 +69,6 @@ const pos = derived(() => {
 
 const missing = derived(() => id.value !== '' && !pos.value)
 
-onLoad((q) => {
-  id.value = q.id || 'none'
-})
 
 function buyOne() {
   trade(id.value, 1)
