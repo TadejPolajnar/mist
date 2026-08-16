@@ -58,12 +58,14 @@ const badSrc = [
   '<span onTap={() => toggle(0, true)}>{open.value.length}</span>',
 ].join('\n') + '\n'
 const goodSrc = badSrc.replace('t.done = true', 't.done && 0')
-const uri = 'file:///tmp/mist-lsp-e2e/pages/index.mist'
+const root = process.argv[3]
+const { pathToFileURL } = require('node:url')
+const uri = pathToFileURL(root + '/pages/index.mist').href
 
 async function main() {
   const init = await send('initialize', { capabilities: {} }, true)
   const caps = init.result.capabilities
-  check('caps', caps.completionProvider && caps.hoverProvider && caps.definitionProvider && caps.signatureHelpProvider && caps.renameProvider && caps.textDocumentSync === 1, JSON.stringify(caps))
+  check('caps', caps.completionProvider && caps.hoverProvider && caps.definitionProvider && caps.signatureHelpProvider && caps.renameProvider && caps.textDocumentSync === 2, JSON.stringify(caps))
   await send('initialized', {})
   await send('textDocument/didOpen', { textDocument: { uri, languageId: 'mist', version: 1, text: badSrc } })
   await waitDiag(1)
@@ -86,6 +88,26 @@ async function main() {
   check('rename', edits && edits.length >= 2, JSON.stringify(ren.result))
   const bad = await send('textDocument/rename', { textDocument: { uri }, position: { line: 7, character: 20 }, newName: '9bad' }, true)
   check('rename-invalid', bad.error && bad.error.message.includes('identifier'), JSON.stringify(bad))
+
+  const badLine = goodSrc.split('\n')[5]
+  const col = badLine.indexOf('&& 0')
+  await send('textDocument/didChange', { textDocument: { uri, version: 3 }, contentChanges: [
+    { range: { start: { line: 5, character: col }, end: { line: 5, character: col + 4 } }, text: '= true' },
+  ] })
+  await waitDiag(3)
+  const d3 = diagRounds[2]
+  check('diag-incremental', d3.length === 1 && String(d3[0].code) === 'M1001', JSON.stringify(d3))
+
+  const storeUri = pathToFileURL(root + '/pages/store.mist').href
+  const storeSrc = require('node:fs').readFileSync(root + '/pages/store.mist', 'utf8')
+  await send('textDocument/didOpen', { textDocument: { uri: storeUri, languageId: 'mist', version: 1, text: storeSrc } })
+  await waitDiag(4)
+  const xr = await send('textDocument/rename', { textDocument: { uri: storeUri }, position: { line: 2, character: 18 }, newName: 'record' }, true)
+  const changed = xr.result && xr.result.changes ? Object.keys(xr.result.changes) : []
+  const storeFile = changed.find((k) => k.endsWith('stats.ts'))
+  const pageFile = changed.find((k) => k.endsWith('store.mist'))
+  check('rename-cross-file', changed.length === 2 && storeFile && pageFile && xr.result.changes[pageFile].length === 2 && xr.result.changes[storeFile].length >= 1, JSON.stringify(xr.result))
+
   console.log(failures.length === 0 ? 'ALL OK' : `FAILED ${failures.length}`)
   server.kill()
   process.exit(failures.length === 0 ? 0 : 1)
@@ -98,11 +120,24 @@ main()
 #[test]
 fn lsp_end_to_end_over_stdio() {
     let dir = std::env::temp_dir().join("mist-lsp-e2e");
-    fs::create_dir_all(&dir).expect("temp dir");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("pages")).expect("temp dir");
+    fs::create_dir_all(dir.join("stores")).expect("temp dir");
+    fs::write(dir.join("app.mist"), "---\n---\n").expect("write app");
+    fs::write(
+        dir.join("stores/stats.ts"),
+        "import { store } from 'mist'\nexport const cart = store({ n: 0 })\nexport function track() { cart.value.n++ }\n",
+    )
+    .expect("write store");
+    fs::write(
+        dir.join("pages/store.mist"),
+        "---\nimport { cart, track } from '../stores/stats.ts'\nfunction go() { track() }\n---\n<span onTap={go}>{cart.value.n}</span>\n",
+    )
+    .expect("write store page");
     let driver = dir.join("driver.js");
     fs::write(&driver, DRIVER).expect("write driver");
     let bin = env!("CARGO_BIN_EXE_mistc-lsp");
-    let out = match Command::new("node").arg(&driver).arg(bin).output() {
+    let out = match Command::new("node").arg(&driver).arg(bin).arg(&dir).output() {
         Ok(o) => o,
         Err(_) => {
             eprintln!("skipping lsp e2e: node not available");

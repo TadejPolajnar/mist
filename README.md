@@ -229,9 +229,10 @@ Working end-to-end and validated in WeChat DevTools: pages, components, slots, i
 1. Real-device benchmark numbers (needs a registered AppID)
 2. Nested-loop hoisting
 3. Zero-Node option: bundle Tailwind's standalone binary
-4. `mistc-lsp` polish (incremental sync, cross-file store rename) — diagnostics,
-   completions, hover, go-to-definition, signature help, rename and the
-   [editors/vscode](editors/vscode) client already ship
+4. `mistc-lsp` — diagnostics, completions, hover, go-to-definition, signature
+   help, incremental sync, rename (including cross-file store rename) and the
+   [editors/vscode](editors/vscode) client all ship; next: workspace-wide
+   diagnostics
 
 ## License
 

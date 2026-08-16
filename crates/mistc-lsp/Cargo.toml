@@ -10,5 +10,5 @@ categories = ["development-tools"]
 [dependencies]
 mistc = { path = "../.." }
 tower-lsp = "0.20"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "time"] }
 regex = "1"

@@ -100,16 +100,22 @@ language config for TS/TSX/CSS highlighting via built-in grammars, plus a thin
 LSP client (`client.js`, needs `npm install` for `vscode-languageclient`) that
 spawns `mistc-lsp` over stdio (PATH or `mist.lspPath` setting; degrades to
 highlighting-only if absent). `crates/mistc-lsp` is a workspace binary crate
-(tower-lsp): on open/change it runs `sfc::split` + `compile_unit_with_stores`
-(store imports resolved from disk relative to the file; no Tailwind — that only
-runs in `finish_project`), regex-parses `M#### at line L:C` out of the error
-string into LSP diagnostics, and serves completions, hover, go-to-definition
-(store symbols resolve into their module file), signature help, and
-whole-word rename (local symbols only; store renames rejected) from a
-`Symbol` table built per request via `frontmatter::analyze_with_stores` plus
-textual decl lookup — declaration positions and derived-source hovers come
-from regex over the frontmatter text, not spans. Grammar and LSP must track
-template/frontmatter syntax changes.
+(tower-lsp): **incremental** text sync (`apply_change` applies UTF-16 range
+edits to the stored doc; on change, diagnostics are debounced 150ms with a
+per-URI generation counter so stale computes never publish), then
+`sfc::split` + `compile_unit_with_stores` (store imports resolved from disk
+relative to the file; no Tailwind — that only runs in `finish_project`),
+regex-parses `M#### at line L:C` out of the error string into LSP
+diagnostics, and serves completions, hover, go-to-definition (store symbols
+resolve into their module file), signature help, and whole-word rename from
+a `Symbol` table built per request via `frontmatter::analyze_with_stores`
+plus textual decl lookup — declaration positions and derived-source hovers
+come from regex over the frontmatter text, not spans. **Cross-file store
+rename**: renaming a store symbol from a page walks up to the `app.mist`
+src root, scans `.mist`/`.ts` project files (open-buffer versions win over
+disk), matches importers by canonical store path (`imports_store`), and
+returns a multi-file `WorkspaceEdit` (`store_rename_edits`). Grammar and
+LSP must track template/frontmatter syntax changes.
 
 Commits: **Conventional Commits, subject line only.** History pattern per
 milestone: `feat:` → subagent review → `fix: address … review findings`.
@@ -213,7 +219,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
 | `inline.rs` (9) | pure-render inlining, slots, multipleSlots |
 | `components.rs` (25) | properties, callback events, usingComponents |
 | `diagnostics.rs` (78) | M-code positions and messages, M1001/M1007/M1009/M1021, npm guard |
-| `crates/mistc-lsp` (9 unit + 1 e2e) | LSP helpers; full stdio protocol session via a Node driver |
+| `crates/mistc-lsp` (14 unit + 1 e2e) | LSP helpers incl. incremental sync + cross-file rename; full stdio protocol session via a Node driver |
 | `bench.rs` (1) | performance regression guard over `benchmark/bench.js` |
 | `todo.rs` (1) | single-file smoke test |
 | `edge_cases.rs` (14) | error paths, unicode, deep paths, config edge cases |

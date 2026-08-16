@@ -219,7 +219,7 @@ src/
 1. 真机基准数据（需要已注册的 AppID）
 2. 嵌套循环提升
 3. 零 Node 方案：打包 Tailwind 独立二进制
-4. `mistc-lsp` 打磨（增量同步、跨文件 store 重命名）——诊断、补全、悬停、跳转定义、签名帮助、重命名以及 [editors/vscode](editors/vscode) 客户端均已可用
+4. `mistc-lsp`——诊断、补全、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [editors/vscode](editors/vscode) 客户端均已可用；下一步：工作区级诊断
 
 ## 许可证
 
