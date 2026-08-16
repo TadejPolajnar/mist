@@ -1,6 +1,6 @@
-//! Per-tag metadata for native WeChat components (spike 028, source A:
-//! hand-curated against the WeChat component docs — miniprogram-api-typings
-//! ships event payload types only, not per-component attribute tables).
+//! Per-tag metadata for native WeChat components, hand-curated against the
+//! WeChat component docs (miniprogram-api-typings ships event payload types
+//! only, not per-component attribute tables, so it cannot be generated).
 //! Tags absent from the table skip validation entirely; validation is
 //! warning-tier (M1023/M1024) and suppressible via `config.customAttrs`.
 
