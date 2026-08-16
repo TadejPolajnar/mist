@@ -801,6 +801,74 @@ fn m1019_silent_on_native_tags() {
 }
 
 #[test]
+fn m1023_warns_on_unknown_native_event_with_suggestion() {
+    let src = "---\nfunction more() { wx.showToast({ title: 'x' }) }\n---\n<scroll-view scroll-y onScrolToLower={more}>x</scroll-view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert_eq!(unit.warnings.len(), 1, "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("M1023"), "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("onScrolToLower on <scroll-view>"), "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("did you mean onScrollToLower?"), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1023_silent_on_valid_events() {
+    let src = "---\nfunction f() { wx.showToast({ title: 'x' }) }\n---\n<scroll-view scroll-y onScrollToLower={f} onTap={f}><input onInput={f} onConfirm={f} /><swiper onChange={f}><swiper-item>x</swiper-item></swiper></scroll-view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(unit.warnings.is_empty(), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1024_warns_on_unknown_native_attr_with_suggestion() {
+    let src = "---\n---\n<scroll-view scrol-y>x</scroll-view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert_eq!(unit.warnings.len(), 1, "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("M1024"), "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("'scrol-y' on <scroll-view>"), "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("did you mean scroll-y?"), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1024_silent_on_valid_attrs_and_untabled_tags() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<scroll-view scroll-y refresher-enabled><image src=\"/a.png\" mode=\"aspectFill\" lazy-load /><map custom-thing=\"x\" />{n.value}</scroll-view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(unit.warnings.is_empty(), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1024_silent_on_view_with_animation() {
+    let src = "---\nimport { state } from 'mist'\nconst anim = state(null)\n---\n<view animation={anim.value} hover-class=\"pressed\">x</view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(unit.warnings.is_empty(), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1024_validates_web_aliases_against_mapped_tag() {
+    let src = "---\n---\n<div hover-class=\"pressed\" foo-bar=\"x\">y</div>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert_eq!(unit.warnings.len(), 1, "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("M1024"), "warnings: {:?}", unit.warnings);
+    assert!(unit.warnings[0].contains("'foo-bar' on <view>"), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn custom_attrs_config_suppresses_meta_warnings() {
+    let src = "---\nfunction f() { wx.showToast({ title: 'x' }) }\nexport const config = { customAttrs: ['fancy-attr', 'onFancyEvent'] }\n---\n<scroll-view fancy-attr=\"x\" onFancyEvent={f}>y</scroll-view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(unit.warnings.is_empty(), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn meta_warnings_skip_component_props() {
+    let src = "---\nimport Badge from '../components/badge.mist'\n---\n<Badge fancy-prop=\"x\" />\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(
+        unit.warnings.iter().all(|w| !w.contains("M1024")),
+        "warnings: {:?}",
+        unit.warnings
+    );
+}
+
+#[test]
 fn m1019_silent_on_web_alias_tags() {
     let src = "---\n---\n<div><span>x</span></div>\n";
     let unit = mistc::compile_unit(src, true).expect("compile failed");

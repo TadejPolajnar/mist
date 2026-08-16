@@ -28,6 +28,8 @@ pub struct Analysis {
     pub plugin_components: Vec<(String, String)>,
     /// `config.customTags` — tag names that suppress the M1019 unknown-tag warning
     pub custom_tags: Vec<String>,
+    /// `config.customAttrs` — attr/event names that suppress M1023/M1024
+    pub custom_attrs: Vec<String>,
     /// `config.virtualHost` — component-only; removes the wrapper node
     pub virtual_host: Option<bool>,
     /// `config.pureDataPattern` — component-only; regex source (validated, no `/`)
@@ -501,6 +503,7 @@ pub fn analyze_with_stores_bound(
     let mut events_raw: Option<String> = None;
     let mut plugin_components_raw: Option<String> = None;
     let mut custom_tags_raw: Option<String> = None;
+    let mut custom_attrs_raw: Option<String> = None;
     let mut component_options_raw: Option<String> = None;
     let mut plain_stmts: Vec<Span> = Vec::new();
     let mut plain_consts: Vec<String> = Vec::new();
@@ -625,6 +628,11 @@ pub fn analyze_with_stores_bound(
                                     None => (None, None),
                                 };
                                 custom_tags_raw = custom_tags;
+                                let (custom_attrs, remaining) = match remaining {
+                                    Some(raw) => split_custom_attrs_config(&raw)?,
+                                    None => (None, None),
+                                };
+                                custom_attrs_raw = custom_attrs;
                                 let (component_options, remaining) = match remaining {
                                     Some(raw) => split_component_options_config(&raw)?,
                                     None => (None, None),
@@ -966,6 +974,11 @@ pub fn analyze_with_stores_bound(
         None => Vec::new(),
     };
 
+    let custom_attrs = match custom_attrs_raw {
+        Some(raw) => custom_attrs_config_entries(&raw)?,
+        None => Vec::new(),
+    };
+
     let component_options = match component_options_raw {
         Some(raw) => component_options_config_entries(&raw)?,
         None => ComponentOptions::default(),
@@ -988,6 +1001,7 @@ pub fn analyze_with_stores_bound(
         plugin_imports,
         plugin_components,
         custom_tags,
+        custom_attrs,
         virtual_host: component_options.virtual_host,
         pure_data_pattern: component_options.pure_data_pattern,
         external_classes: component_options.external_classes,
@@ -1159,6 +1173,17 @@ fn plugin_components_config_entries(raw: &str) -> Result<Vec<(String, String)>, 
 }
 
 fn split_custom_tags_config(raw: &str) -> Result<(Option<String>, Option<String>), String> {
+    split_string_array_config(raw, "customTags")
+}
+
+fn split_custom_attrs_config(raw: &str) -> Result<(Option<String>, Option<String>), String> {
+    split_string_array_config(raw, "customAttrs")
+}
+
+fn split_string_array_config(
+    raw: &str,
+    key: &str,
+) -> Result<(Option<String>, Option<String>), String> {
     let wrapped = format!("({})", raw);
     let allocator = Allocator::default();
     let source_type = SourceType::default().with_typescript(true);
@@ -1172,31 +1197,31 @@ fn split_custom_tags_config(raw: &str) -> Result<(Option<String>, Option<String>
     let Expression::ObjectExpression(obj) = unparenthesize(&es.expression) else {
         return Ok((None, Some(raw.to_string())));
     };
-    let mut custom_tags = None;
+    let mut found = None;
     let mut kept: Vec<String> = Vec::new();
     for p in &obj.properties {
-        let mut is_custom_tags = false;
+        let mut is_match = false;
         if let ObjectPropertyKind::ObjectProperty(op) = p {
-            if op.key.static_name().as_deref() == Some("customTags") {
-                is_custom_tags = true;
+            if op.key.static_name().as_deref() == Some(key) {
+                is_match = true;
                 let Expression::ArrayExpression(_) = unparenthesize(&op.value) else {
-                    return Err("config.customTags must be an array literal".to_string());
+                    return Err(format!("config.{} must be an array literal", key));
                 };
-                custom_tags = Some(text(&wrapped, op.value.span()).to_string());
+                found = Some(text(&wrapped, op.value.span()).to_string());
             }
         }
-        if !is_custom_tags {
+        if !is_match {
             let span = p.span();
             kept.push(wrapped[span.start as usize..span.end as usize].to_string());
         }
     }
-    if custom_tags.is_none() {
+    if found.is_none() {
         return Ok((None, Some(raw.to_string())));
     }
     if kept.is_empty() {
-        return Ok((custom_tags, None));
+        return Ok((found, None));
     }
-    Ok((custom_tags, Some(format!("{{ {} }}", kept.join(", ")))))
+    Ok((found, Some(format!("{{ {} }}", kept.join(", ")))))
 }
 
 /// Splits `virtualHost`/`pureDataPattern`/`externalClasses` out of the config
@@ -1323,33 +1348,43 @@ fn component_options_config_entries(raw: &str) -> Result<ComponentOptions, Strin
 }
 
 fn custom_tags_config_entries(raw: &str) -> Result<Vec<String>, String> {
+    string_array_config_entries(raw, "customTags")
+}
+
+fn custom_attrs_config_entries(raw: &str) -> Result<Vec<String>, String> {
+    string_array_config_entries(raw, "customAttrs")
+}
+
+fn string_array_config_entries(raw: &str, key: &str) -> Result<Vec<String>, String> {
     let wrapped = format!("({})", raw);
     let allocator = Allocator::default();
     let source_type = SourceType::default().with_typescript(true);
     let ret = Parser::new(&allocator, &wrapped, source_type).parse();
     if !ret.errors.is_empty() {
-        return Err("config.customTags must be an array literal".to_string());
+        return Err(format!("config.{} must be an array literal", key));
     }
     let Some(Statement::ExpressionStatement(es)) = ret.program.body.first() else {
-        return Err("config.customTags must be an array literal".to_string());
+        return Err(format!("config.{} must be an array literal", key));
     };
     let Expression::ArrayExpression(arr) = unparenthesize(&es.expression) else {
-        return Err("config.customTags must be an array literal".to_string());
+        return Err(format!("config.{} must be an array literal", key));
     };
-    let is_tag_charset = |s: &str| {
+    let is_name_charset = |s: &str| {
         !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     };
     let mut out = Vec::new();
     for el in &arr.elements {
-        let e = el.as_expression().ok_or("config.customTags must hold string literals")?;
+        let e = el
+            .as_expression()
+            .ok_or_else(|| format!("config.{} must hold string literals", key))?;
         let Expression::StringLiteral(value) = unparenthesize(e) else {
-            return Err("config.customTags must hold string literals".to_string());
+            return Err(format!("config.{} must hold string literals", key));
         };
         let value = value.value.to_string();
-        if !is_tag_charset(&value) {
+        if !is_name_charset(&value) {
             return Err(format!(
-                "config.customTags['{}'] must contain only letters, digits, '-' and '_'",
-                value
+                "config.{}['{}'] must contain only letters, digits, '-' and '_'",
+                key, value
             ));
         }
         out.push(value);

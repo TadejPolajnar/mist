@@ -25,6 +25,16 @@ pub struct WxmlOutput {
     /// tags neither a native WeChat element, a web alias, nor a registered
     /// component/inline use — (tag, did-you-mean suggestion), deduped, M1019
     pub unknown_tags: Vec<(String, Option<String>)>,
+    /// unknown events/attributes on native tags present in `tag_meta::TAG_META`
+    /// — deduped, M1023 (events) / M1024 (attributes)
+    pub meta_warnings: Vec<MetaWarning>,
+}
+
+pub struct MetaWarning {
+    pub tag: String,
+    pub name: String,
+    pub is_event: bool,
+    pub suggestion: Option<String>,
 }
 
 /// A `wx:for` list rewritten to a generated derived that maps computed fields
@@ -53,6 +63,7 @@ struct Ctx {
     call_re: Regex,
     loop_params: Vec<String>,
     unknown_tags: Vec<(String, Option<String>)>,
+    meta_warnings: Vec<MetaWarning>,
 }
 
 pub fn emit(
@@ -81,6 +92,7 @@ pub fn emit(
         call_re: Regex::new(r"[A-Za-z0-9_\]]\s*\(").map_err(|e| e.to_string())?,
         loop_params: Vec::new(),
         unknown_tags: Vec::new(),
+        meta_warnings: Vec::new(),
     };
     let mut out = String::new();
     emit_nodes(nodes, &mut ctx, &mut out, 0)?;
@@ -94,6 +106,7 @@ pub fn emit(
         class_hoists: ctx.class_hoists,
         for_hoists: ctx.for_hoists,
         unknown_tags: ctx.unknown_tags,
+        meta_warnings: ctx.meta_warnings,
     })
 }
 
@@ -163,9 +176,9 @@ fn emit_node(node: &Node, ctx: &mut Ctx, out: &mut String, indent: usize) -> Res
             for attr in attrs {
                 if native == "navigator" && attr.name == "href" {
                     let renamed = Attr { name: "url".to_string(), value: clone_value(&attr.value) };
-                    emit_attr(&renamed, ctx, out, is_component)?;
+                    emit_attr(&renamed, ctx, out, is_component, native)?;
                 } else {
-                    emit_attr(attr, ctx, out, is_component)?;
+                    emit_attr(attr, ctx, out, is_component, native)?;
                 }
             }
             if children.is_empty() {
@@ -378,7 +391,7 @@ fn model_companion(prop: &str) -> Option<&'static str> {
     }
 }
 
-fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool) -> Result<(), String> {
+fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool, native: &str) -> Result<(), String> {
     if let Some(prop) = two_way_bind_prop(&attr.name) {
         let AttrValue::Expr(e) = &attr.value else {
             return Err(format!("{}:bind needs an expression: {}:bind={{text}}", prop, prop));
@@ -408,7 +421,25 @@ fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool) -
     }
     if let Some(event) = attr.name.strip_prefix("on") {
         if event.chars().next().is_some_and(|c| c.is_uppercase()) {
-            return emit_event(attr, event, ctx, out, is_component);
+            return emit_event(attr, event, ctx, out, is_component, native);
+        }
+    }
+    if !is_component
+        && !attr.name.contains(':')
+        && !attr.name.starts_with("data-")
+        && !attr.name.starts_with("aria-")
+    {
+        if let Some(meta) = crate::tag_meta::meta_for(native) {
+            if !crate::tag_meta::valid_attr(meta, &attr.name)
+                && !ctx.meta_warnings.iter().any(|w| w.tag == native && w.name == attr.name)
+            {
+                ctx.meta_warnings.push(MetaWarning {
+                    tag: native.to_string(),
+                    name: attr.name.clone(),
+                    is_event: false,
+                    suggestion: crate::tag_meta::suggest_attr(meta, &attr.name),
+                });
+            }
         }
     }
     match &attr.value {
@@ -438,7 +469,7 @@ fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool) -
     Ok(())
 }
 
-fn emit_event(attr: &Attr, event: &str, ctx: &mut Ctx, out: &mut String, is_component: bool) -> Result<(), String> {
+fn emit_event(attr: &Attr, event: &str, ctx: &mut Ctx, out: &mut String, is_component: bool, native: &str) -> Result<(), String> {
     let (event, flavor) = match event.split_once(':') {
         Some((e, "catch")) => (e, "catch"),
         Some((e, "mut")) => (e, "mut-bind:"),
@@ -449,7 +480,21 @@ fn emit_event(attr: &Attr, event: &str, ctx: &mut Ctx, out: &mut String, is_comp
         // component event: `onToggle` → `bind:toggle`
         format!("{}:{}", flavor.trim_end_matches(':'), crate::frontmatter::event_name(&format!("on{}", event)))
     } else {
-        format!("{}{}", flavor, map_event(event))
+        let mapped = map_event(event);
+        if let Some(meta) = crate::tag_meta::meta_for(native) {
+            let source = format!("on{}", event);
+            if !crate::tag_meta::valid_event(meta, &mapped)
+                && !ctx.meta_warnings.iter().any(|w| w.tag == native && w.name == source)
+            {
+                ctx.meta_warnings.push(MetaWarning {
+                    tag: native.to_string(),
+                    name: source,
+                    is_event: true,
+                    suggestion: crate::tag_meta::suggest_event(meta, &mapped),
+                });
+            }
+        }
+        format!("{}{}", flavor, mapped)
     };
     let AttrValue::Expr(expr) = &attr.value else {
         return Err(format!("event on{} must be an expression", event));
@@ -772,7 +817,7 @@ fn suggest_tag(tag: &str) -> Option<String> {
         .map(|(candidate, _)| candidate.to_string())
 }
 
-fn levenshtein(a: &str, b: &str) -> usize {
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let mut prev: Vec<usize> = (0..=b.len()).collect();

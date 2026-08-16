@@ -212,7 +212,7 @@ src/
 
 ## 当前状态
 
-端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断、基准测试——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、Node 测试环境（`mistc test`，支持 `setData` payload 大小断言）、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。仍处于设计阶段：`[id].mist` 路由文件、npm 导入。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
+端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断、基准测试——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、Node 测试环境（`mistc test`，支持 `setData` payload 大小断言）、原生标签属性/事件校验（M1023/M1024）、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。仍处于设计阶段：`[id].mist` 路由文件、npm 导入。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
 
 ## 路线图
 

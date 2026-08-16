@@ -6,7 +6,7 @@
 M1021 和 M1022 会给出文件的行:列位置，M1010 给出行号（其余编码只报告文件
 路径；M1015 对导入形态错误给出行:列，对 `pluginComponents` 的取值/冲突检查
 只报告文件路径）。警告（`M1002`、`M1006`、`M1008`、`M1012`、`M1016`、
-`M1018`、`M1019`、`M1020`）输出到 stderr，永远不会导致构建失败。M1020 在
+`M1018`、`M1019`、`M1020`、`M1023`、`M1024`）输出到 stderr，永远不会导致构建失败。M1020 在
 上述警告中只是名义上的例外——当 tab bar 文件存在而配置标志缺失时它是警告，
 当设置了标志却缺少文件时它是错误（见下文）。
 
@@ -346,3 +346,33 @@ const items = state(generate())
 const INITIAL = [1, 2, 3]
 const items = state(INITIAL)               // ✓ const 初始值在任何地方都可用
 ```
+
+## M1023 —— 原生标签上的未知事件
+
+原生标签上的 `onXxx` 会盲目编译为 `bindxxx`——而微信会静默忽略它不认识的
+事件，所以打错字的处理函数永远不会触发。编译器元数据表中的标签（约 25 个
+日常组件）会检查事件；表外的标签完全跳过。
+
+```jsx
+<scroll-view onScrolToLower={more} />   // ✗ M1023 —— 是想写 onScrollToLower 吗？
+<scroll-view onScrollToLower={more} />  // ✓
+```
+
+你确定存在的自定义事件（较新的基础库、自渲染标签）可以用
+`config.customAttrs = ['onMyEvent']` 放行。
+
+## M1024 —— 原生标签上的未知属性
+
+与 M1023 同一类静默失败：微信忽略它不认识的属性，所以 `scrol-y` 只是
+无声无息地不生效。只有元数据表中的标签会检查属性；`data-*`、`aria-*`、
+带命名空间的属性（`class:list`、`value:bind`、`mark:*`）和通用属性
+（`class`、`style`、`id`、`hidden`、`hover-*` 等）总是放行。
+
+```jsx
+<scroll-view scrol-y />    // ✗ M1024 —— 是想写 scroll-y 吗？
+<scroll-view scroll-y />   // ✓
+```
+
+表里还不认识的属性（微信每季度都会新增）可以用
+`config.customAttrs = ['the-new-attr']` 放行——过期永远不会破坏构建；
+两个代码都只是警告。

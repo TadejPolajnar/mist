@@ -381,6 +381,12 @@ export const config = {
 `customTags` entries are consumed at compile time (letters/digits/`-`/`_`
 only) and never reach the `.json`.
 
+Events and attributes on everyday native tags are checked the same way:
+a typo'd `onScrolToLower` or `scrol-y` — which WeChat would silently
+ignore — gets an **M1023**/**M1024** warning with a did-you-mean. Only tags
+in the compiler's metadata table are checked, and `config.customAttrs`
+(same shape as `customTags`) allowlists names the table doesn't know.
+
 ## Styling
 
 - **Tailwind v4** — the real `@tailwindcss/cli` runs over your class usage; the

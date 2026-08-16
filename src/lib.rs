@@ -1,5 +1,6 @@
 pub mod frontmatter;
 pub mod scope;
+pub mod tag_meta;
 pub mod sfc;
 pub mod tailwind;
 pub mod tailwind_cli;
@@ -417,6 +418,28 @@ fn compile_unit_full(
             warnings.push(format!(
                 "M1019: unknown tag <{}> — WeChat renders unknown tags as nothing{}",
                 tag, hint
+            ));
+        }
+    }
+
+    for w in &wxml_out.meta_warnings {
+        if analysis.custom_attrs.iter().any(|a| a == &w.name) {
+            continue;
+        }
+        let hint = w
+            .suggestion
+            .as_ref()
+            .map(|s| format!("; did you mean {}?", s))
+            .unwrap_or_default();
+        if w.is_event {
+            warnings.push(format!(
+                "M1023: unknown event {} on <{}> — WeChat silently ignores unknown events{}\n  help: add '{}' to config.customAttrs to suppress",
+                w.name, w.tag, hint, w.name
+            ));
+        } else {
+            warnings.push(format!(
+                "M1024: unknown attribute '{}' on <{}> — WeChat silently ignores unknown attributes{}\n  help: add '{}' to config.customAttrs to suppress",
+                w.name, w.tag, hint, w.name
             ));
         }
     }

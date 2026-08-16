@@ -4,7 +4,7 @@ Errors carry a code and a fix; M1001, M1004, M1007, M1011, M1013, M1017 and
 M1021 and M1022 include file line:col and M1010 the line (other codes report the file
 path only; M1015 reports line:col for import-shape errors and file path only
 for the `pluginComponents` value/collision checks). Warnings (`M1002`,
-`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`) go to stderr and
+`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`) go to stderr and
 never fail the build. M1020 is the exception among warnings above in name
 only — it is a warning when the tab bar file exists without the config flag,
 but an error when the flag is set without the file (see below).
@@ -360,3 +360,35 @@ any function), or keep the state unbound and render it through a `derived`:
 const INITIAL = [1, 2, 3]
 const items = state(INITIAL)               // ✓ const seed works everywhere
 ```
+
+## M1023 — unknown event on a native tag
+
+`onXxx` on a native tag compiles blindly to `bindxxx` — and WeChat silently
+ignores events it doesn't know, so a typo'd handler simply never fires. Tags
+in the compiler's metadata table (the ~25 everyday components) get their
+events checked; tags outside it are skipped entirely.
+
+```jsx
+<scroll-view onScrolToLower={more} />   // ✗ M1023 — did you mean onScrollToLower?
+<scroll-view onScrollToLower={more} />  // ✓
+```
+
+A custom event you know exists (newer base library, self-rendered tag) can be
+allowed with `config.customAttrs = ['onMyEvent']`.
+
+## M1024 — unknown attribute on a native tag
+
+Same silent-failure class as M1023: WeChat ignores attributes it doesn't
+recognize, so `scrol-y` just no-ops. Attributes are checked only for tags
+present in the metadata table; `data-*`, `aria-*`, namespaced attrs
+(`class:list`, `value:bind`, `mark:*`) and universal attrs (`class`, `style`,
+`id`, `hidden`, `hover-*`, …) are always allowed.
+
+```jsx
+<scroll-view scrol-y />    // ✗ M1024 — did you mean scroll-y?
+<scroll-view scroll-y />   // ✓
+```
+
+An attribute the table doesn't know yet (WeChat ships new ones quarterly) can
+be allowed with `config.customAttrs = ['the-new-attr']` — staleness never
+breaks a build; both codes are warnings.

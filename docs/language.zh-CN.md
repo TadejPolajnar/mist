@@ -293,6 +293,11 @@ export const config = {
 
 `customTags` 的条目在编译期消费（只允许字母/数字/`-`/`_`），永远不会进入 `.json`。
 
+日常原生标签上的事件和属性也以同样的方式检查：打错字的
+`onScrolToLower` 或 `scrol-y`——微信会静默忽略它们——会得到
+**M1023**/**M1024** 警告并附带纠正建议。只有编译器元数据表中的标签会被
+检查，`config.customAttrs`（与 `customTags` 同形）可放行表里不认识的名字。
+
 ## 样式
 
 - **Tailwind v4**——真实的 `@tailwindcss/cli` 按你的 class 用量运行；输出
