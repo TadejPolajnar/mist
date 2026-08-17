@@ -506,6 +506,7 @@ fn call_context(src: &str, position: Position) -> Option<(String, u32)> {
 enum TemplateCtx {
     TagName,
     AttrPosition { tag: String },
+    ClosingTag,
 }
 
 fn template_context(src: &str, position: Position) -> Option<TemplateCtx> {
@@ -513,7 +514,10 @@ fn template_context(src: &str, position: Position) -> Option<TemplateCtx> {
     let before = &src[..cursor];
     let lt = before.rfind('<')?;
     let after_lt = &before[lt + 1..];
-    if after_lt.starts_with('/') || after_lt.starts_with('!') {
+    if after_lt.starts_with('/') {
+        return (!after_lt.contains('>')).then_some(TemplateCtx::ClosingTag);
+    }
+    if after_lt.starts_with('!') {
         return None;
     }
     let mut depth = 0i32;
@@ -534,6 +538,9 @@ fn template_context(src: &str, position: Position) -> Option<TemplateCtx> {
         }
     }
     if depth > 0 || quote.is_some() {
+        return None;
+    }
+    if after_lt.trim_end().ends_with('/') {
         return None;
     }
     let tag_ok =
@@ -604,8 +611,10 @@ fn template_completions(
     uri: &Url,
     ctx: TemplateCtx,
     analysis: &mistc::frontmatter::Analysis,
+    docs: &HashMap<Url, String>,
 ) -> Option<Vec<CompletionItem>> {
     match ctx {
+        TemplateCtx::ClosingTag => Some(Vec::new()),
         TemplateCtx::TagName => {
             let mut items: Vec<CompletionItem> = mistc::tag_meta::TAG_META
                 .iter()
@@ -636,21 +645,37 @@ fn template_completions(
         }
         TemplateCtx::AttrPosition { tag } => {
             if let Some(import) = analysis.imports.iter().find(|i| i.local == tag) {
-                return component_prop_completions(uri, &import.path);
+                return component_prop_completions(uri, &import.path, docs);
             }
             Some(native_attr_completions(&tag))
         }
     }
 }
 
-fn component_prop_completions(uri: &Url, import_path: &str) -> Option<Vec<CompletionItem>> {
+fn open_or_disk(docs: &HashMap<Url, String>, path: &Path) -> Option<String> {
+    let canon = path.canonicalize().ok();
+    for (doc_uri, text) in docs {
+        if let Ok(p) = doc_uri.to_file_path() {
+            if Some(&p) == canon.as_ref() || p.canonicalize().ok() == canon {
+                return Some(text.clone());
+            }
+        }
+    }
+    std::fs::read_to_string(path).ok()
+}
+
+fn component_prop_completions(
+    uri: &Url,
+    import_path: &str,
+    docs: &HashMap<Url, String>,
+) -> Option<Vec<CompletionItem>> {
     let dir = doc_dir(uri)?;
     let child_path = dir.join(import_path);
-    let child_src = std::fs::read_to_string(&child_path).ok()?;
+    let child_src = open_or_disk(docs, &child_path)?;
     let child_sfc = mistc::sfc::split(&child_src).ok()?;
     let child_dir = child_path.parent().map(|p| p.to_path_buf());
     let resolver = |p: &str| -> Option<mistc::frontmatter::StoreModuleInfo> {
-        let store_src = std::fs::read_to_string(child_dir.as_ref()?.join(p)).ok()?;
+        let store_src = open_or_disk(docs, &child_dir.as_ref()?.join(p))?;
         mistc::frontmatter::store_module_info(&store_src).ok()
     };
     let child = mistc::frontmatter::analyze_with_stores(
@@ -676,7 +701,12 @@ fn component_prop_completions(uri: &Url, import_path: &str) -> Option<Vec<Comple
     Some(items)
 }
 
-fn completions_for(uri: &Url, src: &str, position: Position) -> Option<Vec<CompletionItem>> {
+fn completions_for(
+    uri: &Url,
+    src: &str,
+    position: Position,
+    docs: &HashMap<Url, String>,
+) -> Option<Vec<CompletionItem>> {
     let sfc = mistc::sfc::split(src).ok()?;
     if (position.line as usize + 1) < sfc.template_line {
         return None;
@@ -690,7 +720,7 @@ fn completions_for(uri: &Url, src: &str, position: Position) -> Option<Vec<Compl
         mistc::frontmatter::analyze_with_stores(sfc.frontmatter, &resolver, sfc.frontmatter_line)
             .ok()?;
     if let Some(t_ctx) = template_context(src, position) {
-        return template_completions(uri, t_ctx, &analysis);
+        return template_completions(uri, t_ctx, &analysis, docs);
     }
     let mut items = Vec::new();
     for s in &analysis.states {
@@ -858,7 +888,7 @@ impl LanguageServer for Backend {
         let position = params.text_document_position.position;
         let docs = self.docs.read().await;
         let Some(src) = docs.get(&uri) else { return Ok(None) };
-        Ok(completions_for(&uri, src, position).map(CompletionResponse::Array))
+        Ok(completions_for(&uri, src, position, &docs).map(CompletionResponse::Array))
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -1097,7 +1127,10 @@ mod tests {
         assert!(at(2, 30).is_none(), "inside {{expr}} must fall back to symbols");
         assert!(at(3, 10).is_none(), "inside text content");
         assert!(at(3, 12).is_none(), "inside expr braces");
-        assert!(at(4, 4).is_none(), "inside closing tag");
+        assert!(
+            matches!(at(4, 4), Some(TemplateCtx::ClosingTag)),
+            "closing tag must suppress completions"
+        );
     }
 
     #[test]
@@ -1117,6 +1150,11 @@ mod tests {
         assert!(
             template_context(after, Position { line: 2, character: 11 }).is_none(),
             "cursor after a closed tag must not complete attrs"
+        );
+        let closing = "---\n---\n<image src=\"x\" /\n";
+        assert!(
+            template_context(closing, Position { line: 2, character: 16 }).is_none(),
+            "mid-typing /> must not offer attributes"
         );
     }
 
