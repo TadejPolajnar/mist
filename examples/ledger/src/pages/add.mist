@@ -41,9 +41,9 @@ function save() {
   <div class="flex flex-col gap-2">
     <span class="text-sm text-gray-500">Category</span>
     <div class="flex gap-2">
-      <button class={cat.value === 'Food' ? 'bench-pill flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'bench-pill flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Food')}>🍜 Food</button>
-      <button class={cat.value === 'Transit' ? 'bench-pill flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'bench-pill flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Transit')}>🚇 Transit</button>
-      <button class={cat.value === 'Fun' ? 'bench-pill flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'bench-pill flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Fun')}>🎮 Fun</button>
+      <button class={cat.value === 'Food' ? 'flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Food')}>🍜 Food</button>
+      <button class={cat.value === 'Transit' ? 'flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Transit')}>🚇 Transit</button>
+      <button class={cat.value === 'Fun' ? 'flex-1 p-3 rounded-2xl bg-blue-600 text-white font-medium' : 'flex-1 p-3 rounded-2xl card text-gray-400'} onTap={() => pick('Fun')}>🎮 Fun</button>
     </div>
   </div>
   <button class={valid.value ? 'p-4 rounded-full bg-blue-600 text-white font-bold' : 'p-4 rounded-full card text-gray-600 font-bold'} onTap={save}>Add expense</button>

@@ -50,7 +50,7 @@ mistc build src --watch      # 保存即重编译 · 在微信开发者工具中
 └──────────────┘                       └──────────────────────────────┘
 ```
 
-**实测数据**（[benchmark/](benchmark/)）：在 1000 行的过滤列表中切换一行，经 setData 桥只发送 **26 字节**——与手写 setData 的下限只差一个很小的常数（由 `tests/bench.rs` 守护）——且恰好合并为一次调用，比朴素的整表重发少约 2000 倍（Node 环境：49 B vs 96.6 KB）。在真实微信开发者工具中与 Taro 3 + React 对比（[benchmark/devtools/](benchmark/devtools/)）：**单次交互约快 2.4 倍**、**每次切换的桥接流量少 2.6 倍**、**包体积小 29 倍**（原始 10.7 KB vs 309.8 KB；gzip 后 4.3 KB vs 86.9 KB——mist 未压缩，Taro 为 webpack 生产构建）。
+**实测数据**：在 1000 行的过滤列表中切换一行，经 setData 桥只发送 **26 字节**——与手写 setData 的下限只差一个很小的常数——且恰好合并为一次调用，比朴素的整表重发少约 2000 倍（Node 环境：49 B vs 96.6 KB）。在真实微信开发者工具中与 Taro 3 + React 对比：**单次交互约快 2.4 倍**、**每次切换的桥接流量少 2.6 倍**、**包体积小 29 倍**（原始 10.7 KB vs 309.8 KB；gzip 后 4.3 KB vs 86.9 KB——mist 未压缩，Taro 为 webpack 生产构建）。
 
 ## 尝一口
 
@@ -104,7 +104,6 @@ cargo run -- build examples/project/src -o dist   # 编译最小示例
 # 微信开发者工具 → 导入项目 → 选择本仓库根目录（miniprogramRoot: dist/）
 
 cargo test              # 完整测试套件（会调用 node 和 npm）
-node benchmark/bench.js # 桥接流量基准测试
 cargo install --path crates/mistc-lsp   # 编辑器 LSP（配合 editors/vscode）
 ```
 
@@ -167,7 +166,7 @@ src/
 
 ## 基准测试
 
-与 **Taro 3.6.35 + React 18** 在真实微信开发者工具（基础库 3.17.0）中一对一对比，使用同一套与框架无关的测量工具（[benchmark/devtools/](benchmark/devtools/)）：`setData` 在页面对象上挂钩（位于任一框架运行时之外）、相同的脚本化点击、同一台机器。
+与 **Taro 3.6.35 + React 18** 在真实微信开发者工具（基础库 3.17.0）中一对一对比，使用同一套与框架无关的测量工具：`setData` 在页面对象上挂钩（位于任一框架运行时之外）、相同的脚本化点击、同一台机器。这些数字背后的完整故事见[发布长文](https://www.linkedin.com/posts/tadej-pol_ive-shipped-software-on-compilers-for-years-ugcPost-7488621096737579008-jkzY/)。
 
 **列表应用**——1000 行过滤列表，50 次行切换：
 
@@ -196,7 +195,6 @@ src/
 - 只对比了一个 Taro 版本（3.6.35 + React 18，webpack5 生产构建）——不是 Taro 4，也不是其他框架。
 - 延迟由自动化工具驱动（含 websocket 往返）；只在同一测量框架内可比，不能与手动点击比较。
 - 商城应用显示**小列表下点击延迟趋同**——100 行的 React 协调很便宜，测量开销占主导。Mist 的延迟优势是大列表现象；数据量优势随数据复杂度增长（结构性变更时 11 倍）。
-- 复现方法：`benchmark/devtools/README.md`——Taro 对照应用已提交并锁定版本。
 
 ## 工作原理
 
@@ -212,7 +210,7 @@ src/
 
 ## 当前状态
 
-端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断、基准测试——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、Node 测试环境（`mistc test`，支持 `setData` payload 大小断言）、原生标签属性/事件校验（M1023/M1024）、`[id].mist` 路由参数页面、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。仍处于设计阶段：npm 导入。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
+端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、Node 测试环境（`mistc test`，支持 `setData` payload 大小断言）、原生标签属性/事件校验（M1023/M1024）、`[id].mist` 路由参数页面、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。仍处于设计阶段：npm 导入。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
 
 ## 路线图
 

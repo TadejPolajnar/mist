@@ -191,19 +191,34 @@ fn collect_from_attr(attr: &Attr, out: &mut Vec<String>) {
     match &attr.value {
         AttrValue::Static(s) => out.extend(s.split_whitespace().map(String::from)),
         AttrValue::Expr(e) => {
-            let mut chars = e.chars().peekable();
-            while let Some(c) = chars.next() {
+            let chars: Vec<char> = e.chars().collect();
+            let mut i = 0;
+            while i < chars.len() {
+                let c = chars[i];
                 if c == '\'' || c == '"' {
-                    let quote = c;
-                    let mut content = String::new();
-                    for c2 in chars.by_ref() {
-                        if c2 == quote {
-                            break;
-                        }
-                        content.push(c2);
+                    let start = i + 1;
+                    let mut j = start;
+                    while j < chars.len() && chars[j] != c {
+                        j += 1;
                     }
-                    out.extend(content.split_whitespace().map(String::from));
+                    let mut k = i;
+                    while k > 0 && chars[k - 1] == ' ' {
+                        k -= 1;
+                    }
+                    let compared_before = k > 0 && chars[k - 1] == '=';
+                    let mut n = j + 1;
+                    while n < chars.len() && chars[n] == ' ' {
+                        n += 1;
+                    }
+                    let compared_after = n < chars.len() && (chars[n] == '=' || chars[n] == '!');
+                    if !compared_before && !compared_after {
+                        let content: String = chars[start..j].iter().collect();
+                        out.extend(content.split_whitespace().map(String::from));
+                    }
+                    i = j + 1;
+                    continue;
                 }
+                i += 1;
             }
         }
         AttrValue::Bare => {}

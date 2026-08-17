@@ -9,8 +9,10 @@ covers the user-facing story; this file covers how the repo actually works.
 JSX-ish template + Tailwind) into native WeChat Mini Program code
 (WXML/WXSS/JS/JSON). Core thesis: **everything statically analyzable → every
 state mutation compiles to a path-precise `setData`** — no vdom, no runtime tree
-diffing, ~9.6 KB runtime. `SPEC.md` is the language design; `benchmark/` proves the
-thesis (49 B/toggle in the Node harness, 26 B on-device, guarded by `tests/bench.rs`).
+diffing, ~9.6 KB runtime. `SPEC.md` is the language design. The thesis was
+measured head-to-head against Taro 3 (49 B/toggle in a Node harness, 26 B
+on-device in DevTools) — numbers and methodology live in README §Benchmarks
+and the launch write-up it links.
 
 ## Architecture map
 
@@ -90,7 +92,6 @@ cargo run -- init my-app                      # scaffold a new project
 cargo run -- test my-app                      # run the app's tests/*.test.js in the Node harness
 cargo test                                    # 200+ tests — spawns node, npm, npx
 cargo test --test compile                     # pure-Rust subset (no node needed)
-node benchmark/bench.js                       # bridge-traffic benchmark
 ```
 
 DevTools: Import Project → **repo root** (tracked `project.config.json` has
@@ -125,7 +126,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
 ## Gotchas (hard-won — respect these)
 
 1. **Tests hit real external tools.** `npm`/`npx` (Tailwind v4 install + run) and
-   `node` (runtime, stores, bench tests). No network or no Node ⇒ those suites
+   `node` (runtime and store tests). No network or no Node ⇒ those suites
    fail *environmentally*, not because you broke something. The npm cache lives
    at `~/.cache/mistc/tw4` ($TMPDIR fallback when HOME is unset; delete it if
    Tailwind output seems stale). Post-processed CSS is memoized there per
@@ -139,10 +140,8 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    that the current one didn't — it never touches files it didn't write.
 3. **`runtime/mist-rt.js` is embedded at Rust compile time.** Editing it requires
    a `cargo build` before `dist/mist-rt.js` changes. It must keep
-   `tests/runtime.rs` and the `tests/bench.rs` regression guard green; the
-   benchmark numbers are quoted in **seven** places — `README.md`, `README.zh-CN.md`, `benchmark/README.md`,
-   `benchmark/devtools/README.md`, `benchmark/devtools/EVAL.md`, `docs/api.md`,
-   `BLOG.md` — update together if they move.
+   `tests/runtime.rs` green; the benchmark numbers are quoted in both READMEs —
+   update together if they move.
 4. **SPEC.md ≠ documentation of behavior.** It predates the code and ~half is
    design-only. Grep `src/` before claiming a feature exists. Conversely, SPEC
    §14 records resolved design decisions (boxes over `$state` magic, `value:bind`
@@ -222,7 +221,6 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
 | `components.rs` (25) | properties, callback events, usingComponents |
 | `diagnostics.rs` (78) | M-code positions and messages, M1001/M1007/M1009/M1021, npm guard |
 | `crates/mistc-lsp` (14 unit + 1 e2e) | LSP helpers incl. incremental sync + cross-file rename; full stdio protocol session via a Node driver |
-| `bench.rs` (1) | performance regression guard over `benchmark/bench.js` |
 | `todo.rs` (1) | single-file smoke test |
 | `edge_cases.rs` (14) | error paths, unicode, deep paths, config edge cases |
 | `cli.rs` (11) | --version/--help, unknown-command suggestion, init scaffold compiles, mist-routes.d.ts emission |

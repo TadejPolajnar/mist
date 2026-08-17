@@ -89,3 +89,12 @@ fn harvest_style_classes_finds_both_in_compound_selector() {
     classes.dedup();
     assert_eq!(classes, vec!["a", "b"]);
 }
+
+#[test]
+fn comparison_literals_in_class_exprs_are_not_classes() {
+    let src = "---\nimport { state } from 'mist'\nconst cat = state('Food')\n---\n<span class={cat.value === 'Food' ? 'font-bold flex-1' : 'text-gray-400'}>x</span>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(unit.classes.contains(&"font-bold".to_string()), "classes: {:?}", unit.classes);
+    assert!(unit.classes.contains(&"text-gray-400".to_string()), "classes: {:?}", unit.classes);
+    assert!(!unit.classes.contains(&"Food".to_string()), "comparison operand leaked: {:?}", unit.classes);
+}

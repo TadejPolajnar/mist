@@ -33,7 +33,7 @@ Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template 
 └──────────────┘                       └──────────────────────────────┘
 ```
 
-**Measured** ([benchmark/](benchmark/)): toggling one row in a 1000-row filtered list sends **26 bytes** — within a small constant of the hand-written setData floor (guarded by `tests/bench.rs`) — across the setData bridge in exactly one batched call — ~2000× less than the naive full-resend pattern (Node harness: 49 B vs 96.6 KB). Head-to-head against Taro 3 + React in real WeChat DevTools ([benchmark/devtools/](benchmark/devtools/)): **~2.4× faster per interaction**, **2.6× less bridge traffic per toggle**, and a **29× smaller package** (10.7 KB vs 309.8 KB raw; 4.3 KB vs 86.9 KB gzipped — mist unminified, Taro a production webpack build).
+**Measured**: toggling one row in a 1000-row filtered list sends **26 bytes** — within a small constant of the hand-written setData floor — across the setData bridge in exactly one batched call — ~2000× less than the naive full-resend pattern (Node harness: 49 B vs 96.6 KB). Head-to-head against Taro 3 + React in real WeChat DevTools: **~2.4× faster per interaction**, **2.6× less bridge traffic per toggle**, and a **29× smaller package** (10.7 KB vs 309.8 KB raw; 4.3 KB vs 86.9 KB gzipped — mist unminified, Taro a production webpack build).
 
 ## Install
 
@@ -104,7 +104,6 @@ cargo run -- build examples/project/src -o dist   # compile the smallest example
 # WeChat DevTools: Import Project → THIS repo folder (miniprogramRoot: dist/)
 
 cargo test              # full suite (spawns node + npm)
-node benchmark/bench.js # bridge-traffic benchmark
 cargo install --path crates/mistc-lsp   # LSP for editors/vscode
 ```
 
@@ -168,9 +167,10 @@ All writes in one event tick merge into **one** `setData`. Derived arrays render
 ## Benchmarks
 
 Measured head-to-head against **Taro 3.6.35 + React 18** in real WeChat DevTools
-(lib 3.17.0), driven by one framework-agnostic instrument
-([benchmark/devtools/](benchmark/devtools/)): `setData` hooked at the page object
-outside either framework, identical scripted taps, same machine.
+(lib 3.17.0), driven by one framework-agnostic instrument: `setData` hooked at
+the page object outside either framework, identical scripted taps, same
+machine. The full story behind these numbers is in the
+[launch write-up](https://www.linkedin.com/posts/tadej-pol_ive-shipped-software-on-compilers-for-years-ugcPost-7488621096737579008-jkzY/).
 
 **List app** — 1000-row filtered list, 50 row-toggles:
 
@@ -206,11 +206,10 @@ outside either framework, identical scripted taps, same machine.
   reconciliation over 100 rows is cheap and harness overhead dominates. Mist's
   latency edge is a large-list phenomenon; its payload edge grows with data
   complexity (11× on structural changes).
-- Reproduce: `benchmark/devtools/README.md` — the Taro twin is committed and pinned.
 
 ## How it works
 
-~5k lines of Rust ([full architecture map in AGENTS.md](AGENTS.md)):
+~8.7k lines of Rust ([full architecture map in AGENTS.md](AGENTS.md)):
 
 1. **`sfc`** splits the file (tracking line offsets for diagnostics)
 2. **`frontmatter`** parses TS with [oxc](https://oxc.rs) and does *span-based source rewriting* — no codegen; mutations become path writes via an AST visitor, reads via guarded regexes
@@ -222,7 +221,7 @@ The emitted JS is deliberately readable (WeChat DevTools can't load source maps)
 
 ## Status
 
-Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics, benchmark — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), native-tag attribute/event validation (M1023/M1024), `[id].mist` route-param pages, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
+Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), native-tag attribute/event validation (M1023/M1024), `[id].mist` route-param pages, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
 
 ## Roadmap
 

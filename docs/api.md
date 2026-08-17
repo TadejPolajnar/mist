@@ -139,15 +139,3 @@ You never import this — generated code does. For debugging, its surface:
 - `observePerf()` / `perfEntries` — `wx.getPerformance` observer installed by
   generated `app.js`; entries readable via `getApp().__perf`.
 
-## Benchmarking your own app
-
-`benchmark/devtools/measure.js` works on any built mini program (Service Port
-enabled in DevTools):
-
-```sh
-node measure.js <project-path> [row-selector]   # selector 'host|.inner' pierces components
-TOGGLES=100 PAGE=/pages/x/x node measure.js my-app '.my-row'
-```
-
-Reports setData calls/bytes, tap-latency p50/p95, initial payload, filter-op
-cost, launch entries, package size.

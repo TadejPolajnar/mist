@@ -102,13 +102,3 @@ dist/
 - `store(init)`、`bindStores`、`unbindStores` —— 共享状态盒子与页面订阅胶水代码。
 - `observePerf()` / `perfEntries` —— 由生成的 `app.js` 安装的 `wx.getPerformance` 观察器；条目可通过 `getApp().__perf` 读取。
 
-## 为你自己的应用做基准测试
-
-`benchmark/devtools/measure.js` 可用于任何已构建的小程序（需在微信开发者工具中启用 Service Port）：
-
-```sh
-node measure.js <project-path> [row-selector]   # selector 'host|.inner' pierces components
-TOGGLES=100 PAGE=/pages/x/x node measure.js my-app '.my-row'
-```
-
-报告 setData 次数/字节数、点击延迟 p50/p95、初始数据体积、过滤操作开销、启动条目、包体积。
