@@ -503,6 +503,179 @@ fn call_context(src: &str, position: Position) -> Option<(String, u32)> {
     Some((name, commas))
 }
 
+enum TemplateCtx {
+    TagName,
+    AttrPosition { tag: String },
+}
+
+fn template_context(src: &str, position: Position) -> Option<TemplateCtx> {
+    let cursor = position_to_byte(src, position);
+    let before = &src[..cursor];
+    let lt = before.rfind('<')?;
+    let after_lt = &before[lt + 1..];
+    if after_lt.starts_with('/') || after_lt.starts_with('!') {
+        return None;
+    }
+    let mut depth = 0i32;
+    let mut quote: Option<char> = None;
+    for c in after_lt.chars() {
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' => quote = Some(c),
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            '>' if depth == 0 => return None,
+            _ => {}
+        }
+    }
+    if depth > 0 || quote.is_some() {
+        return None;
+    }
+    let tag_ok =
+        |t: &str| !t.is_empty() && t.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_');
+    match after_lt.find(char::is_whitespace) {
+        None => {
+            if !after_lt.is_empty() && !tag_ok(after_lt) {
+                return None;
+            }
+            Some(TemplateCtx::TagName)
+        }
+        Some(ws) => {
+            let tag = &after_lt[..ws];
+            if !tag_ok(tag) {
+                return None;
+            }
+            Some(TemplateCtx::AttrPosition { tag: tag.to_string() })
+        }
+    }
+}
+
+fn attr_item(name: &str, detail: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::PROPERTY),
+        detail: Some(detail.into()),
+        ..Default::default()
+    }
+}
+
+fn event_item(name: &str) -> CompletionItem {
+    CompletionItem {
+        label: format!("on{}", name),
+        kind: Some(CompletionItemKind::EVENT),
+        detail: Some("event".into()),
+        ..Default::default()
+    }
+}
+
+fn native_attr_completions(tag: &str) -> Vec<CompletionItem> {
+    let mut items: Vec<CompletionItem> = mistc::tag_meta::UNIVERSAL_ATTRS
+        .iter()
+        .map(|a| attr_item(a, "attribute"))
+        .collect();
+    items.push(attr_item("class:list", "conditional classes"));
+    let native = mistc::wxml::alias_target(tag);
+    if matches!(native, "input" | "textarea") {
+        items.push(attr_item("value:bind", "two-way binding"));
+    }
+    if matches!(native, "switch" | "checkbox") {
+        items.push(attr_item("checked:bind", "two-way binding"));
+    }
+    for e in mistc::tag_meta::COMMON_EVENTS {
+        items.push(event_item(e));
+    }
+    if let Some(meta) = mistc::tag_meta::meta_for(native) {
+        for a in meta.attrs {
+            items.push(attr_item(a, "attribute"));
+        }
+        for e in meta.events {
+            items.push(event_item(e));
+        }
+    }
+    items
+}
+
+fn template_completions(
+    uri: &Url,
+    ctx: TemplateCtx,
+    analysis: &mistc::frontmatter::Analysis,
+) -> Option<Vec<CompletionItem>> {
+    match ctx {
+        TemplateCtx::TagName => {
+            let mut items: Vec<CompletionItem> = mistc::tag_meta::TAG_META
+                .iter()
+                .map(|m| CompletionItem {
+                    label: m.tag.to_string(),
+                    kind: Some(CompletionItemKind::STRUCT),
+                    detail: Some("native".into()),
+                    ..Default::default()
+                })
+                .collect();
+            for t in mistc::wxml::WEB_ALIAS_TAGS {
+                items.push(CompletionItem {
+                    label: t.to_string(),
+                    kind: Some(CompletionItemKind::STRUCT),
+                    detail: Some(format!("→ {}", mistc::wxml::alias_target(t))),
+                    ..Default::default()
+                });
+            }
+            for i in &analysis.imports {
+                items.push(CompletionItem {
+                    label: i.local.clone(),
+                    kind: Some(CompletionItemKind::CLASS),
+                    detail: Some("component".into()),
+                    ..Default::default()
+                });
+            }
+            Some(items)
+        }
+        TemplateCtx::AttrPosition { tag } => {
+            if let Some(import) = analysis.imports.iter().find(|i| i.local == tag) {
+                return component_prop_completions(uri, &import.path);
+            }
+            Some(native_attr_completions(&tag))
+        }
+    }
+}
+
+fn component_prop_completions(uri: &Url, import_path: &str) -> Option<Vec<CompletionItem>> {
+    let dir = doc_dir(uri)?;
+    let child_path = dir.join(import_path);
+    let child_src = std::fs::read_to_string(&child_path).ok()?;
+    let child_sfc = mistc::sfc::split(&child_src).ok()?;
+    let child_dir = child_path.parent().map(|p| p.to_path_buf());
+    let resolver = |p: &str| -> Option<mistc::frontmatter::StoreModuleInfo> {
+        let store_src = std::fs::read_to_string(child_dir.as_ref()?.join(p)).ok()?;
+        mistc::frontmatter::store_module_info(&store_src).ok()
+    };
+    let child = mistc::frontmatter::analyze_with_stores(
+        child_sfc.frontmatter,
+        &resolver,
+        child_sfc.frontmatter_line,
+    )
+    .ok()?;
+    let mut items: Vec<CompletionItem> = child
+        .data_props
+        .iter()
+        .map(|p| attr_item(&p.name, "prop"))
+        .collect();
+    for c in &child.callback_props {
+        items.push(CompletionItem {
+            label: c.clone(),
+            kind: Some(CompletionItemKind::EVENT),
+            detail: Some("callback prop".into()),
+            ..Default::default()
+        });
+    }
+    items.push(attr_item("key", "list key"));
+    Some(items)
+}
+
 fn completions_for(uri: &Url, src: &str, position: Position) -> Option<Vec<CompletionItem>> {
     let sfc = mistc::sfc::split(src).ok()?;
     if (position.line as usize + 1) < sfc.template_line {
@@ -516,6 +689,9 @@ fn completions_for(uri: &Url, src: &str, position: Position) -> Option<Vec<Compl
     let analysis =
         mistc::frontmatter::analyze_with_stores(sfc.frontmatter, &resolver, sfc.frontmatter_line)
             .ok()?;
+    if let Some(t_ctx) = template_context(src, position) {
+        return template_completions(uri, t_ctx, &analysis);
+    }
     let mut items = Vec::new();
     for s in &analysis.states {
         items.push(CompletionItem {
@@ -627,7 +803,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::INCREMENTAL,
                 )),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec!["{".into(), ".".into()]),
+                    trigger_characters: Some(vec!["{".into(), ".".into(), "<".into()]),
                     ..Default::default()
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -903,6 +1079,76 @@ mod tests {
         assert_eq!(&fm[idx..idx + 6], "onPing");
         assert_eq!(find_prop_decl(fm, "tit"), None);
         assert_eq!(find_prop_decl(fm, "missing"), None);
+    }
+
+    #[test]
+    fn template_context_classifies_cursor_positions() {
+        let src = "---\n---\n<scroll-view scroll-y onTap={f}>\n  <span>{open.value}</span>\n</scroll-view>\n";
+        let at = |line: u32, character: u32| template_context(src, Position { line, character });
+        assert!(matches!(at(2, 8), Some(TemplateCtx::TagName)), "mid tag name");
+        match at(2, 13) {
+            Some(TemplateCtx::AttrPosition { tag }) => assert_eq!(tag, "scroll-view"),
+            other => panic!("expected attr position, got {:?}", other.is_some()),
+        }
+        match at(2, 21) {
+            Some(TemplateCtx::AttrPosition { tag }) => assert_eq!(tag, "scroll-view"),
+            other => panic!("expected attr position after attr, got {:?}", other.is_some()),
+        }
+        assert!(at(2, 30).is_none(), "inside {{expr}} must fall back to symbols");
+        assert!(at(3, 10).is_none(), "inside text content");
+        assert!(at(3, 12).is_none(), "inside expr braces");
+        assert!(at(4, 4).is_none(), "inside closing tag");
+    }
+
+    #[test]
+    fn template_context_survives_arrow_handlers_and_quoted_gt() {
+        let src = "---\n---\n<span onTap={() => f(1)} data-x=\"a>b\" >\n";
+        match template_context(src, Position { line: 2, character: 25 }) {
+            Some(TemplateCtx::AttrPosition { tag }) => assert_eq!(tag, "span"),
+            other => panic!("arrow > must not close the tag, got {:?}", other.is_some()),
+        }
+        match template_context(src, Position { line: 2, character: 38 }) {
+            Some(TemplateCtx::AttrPosition { tag }) => assert_eq!(tag, "span"),
+            other => panic!("quoted > must not close the tag, got {:?}", other.is_some()),
+        }
+        let closed = template_context(src, Position { line: 2, character: 40 });
+        assert!(closed.is_none() || matches!(closed, Some(TemplateCtx::AttrPosition { .. })));
+        let after = "---\n---\n<view>text \n";
+        assert!(
+            template_context(after, Position { line: 2, character: 11 }).is_none(),
+            "cursor after a closed tag must not complete attrs"
+        );
+    }
+
+    #[test]
+    fn template_context_skips_quoted_values() {
+        let src = "---\n---\n<image src=\"/a b.png\" mode=\"aspectFill\" />\n";
+        let inside_quote = template_context(src, Position { line: 2, character: 15 });
+        assert!(inside_quote.is_none(), "inside a quoted value");
+        match template_context(src, Position { line: 2, character: 22 }) {
+            Some(TemplateCtx::AttrPosition { tag }) => assert_eq!(tag, "image"),
+            other => panic!("expected attr position between attrs, got {:?}", other.is_some()),
+        }
+    }
+
+    #[test]
+    fn native_attr_completions_cover_meta_and_events() {
+        let labels: Vec<String> =
+            native_attr_completions("scroll-view").into_iter().map(|c| c.label).collect();
+        assert!(labels.contains(&"scroll-y".to_string()), "labels: {:?}", labels);
+        assert!(labels.contains(&"refresher-enabled".to_string()), "labels: {:?}", labels);
+        assert!(labels.contains(&"onScrollToLower".to_string()), "labels: {:?}", labels);
+        assert!(labels.contains(&"onTap".to_string()), "labels: {:?}", labels);
+        assert!(labels.contains(&"class".to_string()), "labels: {:?}", labels);
+        assert!(!labels.contains(&"value:bind".to_string()), "labels: {:?}", labels);
+
+        let div: Vec<String> =
+            native_attr_completions("div").into_iter().map(|c| c.label).collect();
+        assert!(div.contains(&"hover-class".to_string()), "aliases map to view: {:?}", div);
+        let input: Vec<String> =
+            native_attr_completions("input").into_iter().map(|c| c.label).collect();
+        assert!(input.contains(&"value:bind".to_string()), "labels: {:?}", input);
+        assert!(input.contains(&"placeholder-class".to_string()), "labels: {:?}", input);
     }
 
     #[test]

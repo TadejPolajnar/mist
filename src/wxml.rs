@@ -719,20 +719,24 @@ fn is_ident(s: &str) -> bool {
         && s.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
-pub(crate) fn map_tag(tag: &str) -> Result<&str, String> {
-    Ok(match tag {
+pub fn alias_target(tag: &str) -> &str {
+    match tag {
         "div" | "section" | "header" | "footer" | "main" | "article" | "ul" | "ol" | "li"
         | "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "nav" | "aside" => "view",
         "span" => "text",
         "img" => "image",
         "a" => "navigator",
         t => t,
-    })
+    }
+}
+
+pub(crate) fn map_tag(tag: &str) -> Result<&str, String> {
+    Ok(alias_target(tag))
 }
 
 /// Web-alias source tags handled by [`map_tag`] — kept separate from
 /// [`NATIVE_TAGS`] so M1019 can check both without re-deriving one from the other.
-const WEB_ALIAS_TAGS: &[&str] = &[
+pub const WEB_ALIAS_TAGS: &[&str] = &[
     "div", "section", "header", "footer", "main", "article", "ul", "ol", "li", "p", "h1", "h2",
     "h3", "h4", "h5", "h6", "nav", "aside", "span", "img", "a",
 ];
