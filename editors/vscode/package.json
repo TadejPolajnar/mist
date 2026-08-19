@@ -1,6 +1,6 @@
 {
   "name": "mist-lang",
-  "displayName": "Mist",
+  "displayName": "Mist for WeChat Mini Programs",
   "description": "Language support for .mist single-file components — syntax highlighting, diagnostics, completions, hover, go-to-definition, rename and workspace-wide checks via mistc-lsp",
   "version": "0.3.0",
   "publisher": "tadejpolajnar",
