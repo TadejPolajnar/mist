@@ -11,7 +11,7 @@ function activate() {
     { command },
     {
       documentSelector: [{ language: 'mist' }],
-      synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.ts') },
+      synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.{ts,mist}') },
     }
   )
   client.start().catch(() => {

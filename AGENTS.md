@@ -119,12 +119,17 @@ rename**: renaming a store symbol from a page walks up to the `app.mist`
 src root, scans `.mist`/`.ts` project files (open-buffer versions win over
 disk), matches importers by canonical store path (`imports_store`), and
 returns a multi-file `WorkspaceEdit` (`store_rename_edits`). **Workspace
-diagnostics**: the vscode client watches `**/*.ts` (`synchronize.fileEvents`);
-on a store-file save the server (`did_change_watched_files` →
-`rediagnose_store_importers`, 300ms generation-debounced, spawned off the
-handler) re-runs `diagnostics_for` over every project `.mist` file whose
-imports resolve to the changed path (`store_importers`) and publishes —
-importing pages never show stale store diagnostics. Grammar and LSP must
+diagnostics**: the vscode client watches `**/*.{ts,mist}`
+(`synchronize.fileEvents`); on a store or component save/delete the server
+(`did_change_watched_files` → `rediagnose_watched`, burst-coalesced: changed
+paths accumulate in `pending_watched` under one 300ms generation so a branch
+switch triggers ONE project walk, not N; snapshot-then-clear-if-latest so
+superseded bursts are never dropped) re-runs `diagnostics_for` over every
+project `.mist` file whose imports resolve to any changed path
+(`imports_path`; `resolved_key` tolerates deleted targets) and publishes
+— importing pages never show stale store diagnostics, and a deleted/renamed
+component lights up its importers with a "component import not found"
+diagnostic (`missing_component_diagnostics`) that clears on restore. Grammar and LSP must
 track template/frontmatter syntax changes.
 
 Commits: **Conventional Commits, subject line only.** History pattern per

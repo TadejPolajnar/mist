@@ -217,7 +217,7 @@ src/
 1. 真机基准数据（需要已注册的 AppID）
 2. 嵌套循环提升
 3. 零 Node 方案：打包 Tailwind 独立二进制
-4. `mistc-lsp`——诊断（含 store 文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [editors/vscode](editors/vscode) 客户端均已可用
+4. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [editors/vscode](editors/vscode) 客户端均已可用
 
 ## 许可证
 

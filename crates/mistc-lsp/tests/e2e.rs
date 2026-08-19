@@ -29,6 +29,10 @@ server.stdout.on('data', (d) => {
         storeMistDiags.push(msg.params.diagnostics)
         if (storeWaiter) { storeWaiter(); storeWaiter = null }
       }
+      if (msg.params.uri.endsWith('comp.mist')) {
+        compDiags.push(msg.params.diagnostics)
+        if (compWaiter) { compWaiter(); compWaiter = null }
+      }
     }
   }
 })
@@ -51,6 +55,12 @@ let storeWaiter = null
 function waitStoreDiag(count) {
   if (storeMistDiags.length >= count) return Promise.resolve()
   return new Promise((resolve) => { storeWaiter = resolve })
+}
+const compDiags = []
+let compWaiter = null
+function waitCompDiag(count) {
+  if (compDiags.length >= count) return Promise.resolve()
+  return new Promise((resolve) => { compWaiter = resolve })
 }
 function check(name, cond, detail) {
   if (cond) console.log('PASS', name)
@@ -138,6 +148,22 @@ async function main() {
   await waitStoreDiag(2)
   check('ws-diag-cleared', storeMistDiags[1].length === 0, JSON.stringify(storeMistDiags[1]))
 
+  const compUri = pathToFileURL(root + '/pages/comp.mist').href
+  const compSrc = fs.readFileSync(root + '/pages/comp.mist', 'utf8')
+  await send('textDocument/didOpen', { textDocument: { uri: compUri, languageId: 'mist', version: 1, text: compSrc } })
+  await waitCompDiag(1)
+  check('comp-open-clean', compDiags[0].length === 0, JSON.stringify(compDiags[0]))
+  const badgePath = root + '/components/Badge.mist'
+  const badgeSrc = fs.readFileSync(badgePath, 'utf8')
+  fs.unlinkSync(badgePath)
+  await send('workspace/didChangeWatchedFiles', { changes: [{ uri: pathToFileURL(badgePath).href, type: 3 }] })
+  await waitCompDiag(2)
+  check('comp-deleted', compDiags[1].length === 1 && compDiags[1][0].message.includes('not found'), JSON.stringify(compDiags[1]))
+  fs.writeFileSync(badgePath, badgeSrc)
+  await send('workspace/didChangeWatchedFiles', { changes: [{ uri: pathToFileURL(badgePath).href, type: 1 }] })
+  await waitCompDiag(3)
+  check('comp-restored', compDiags[2].length === 0, JSON.stringify(compDiags[2]))
+
   console.log(failures.length === 0 ? 'ALL OK' : `FAILED ${failures.length}`)
   server.kill()
   process.exit(failures.length === 0 ? 0 : 1)
@@ -159,6 +185,17 @@ fn lsp_end_to_end_over_stdio() {
         "import { store } from 'mist'\nexport const cart = store({ n: 0 })\nexport function track() { cart.value.n++ }\n",
     )
     .expect("write store");
+    fs::create_dir_all(dir.join("components")).expect("temp dir");
+    fs::write(
+        dir.join("components/Badge.mist"),
+        "---\nimport { props } from 'mist'\nconst { label } = props({ label: '' })\n---\n<span>{label}</span>\n",
+    )
+    .expect("write badge");
+    fs::write(
+        dir.join("pages/comp.mist"),
+        "---\nimport Badge from '../components/Badge.mist'\nimport { state } from 'mist'\nconst n = state(0)\n---\n<view><Badge label=\"hi\" /><span>{n.value}</span></view>\n",
+    )
+    .expect("write comp page");
     fs::write(
         dir.join("pages/store.mist"),
         "---\nimport { cart, track } from '../stores/stats.ts'\nfunction go() { track() }\n---\n<span onTap={go}>{cart.value.n}</span>\n",

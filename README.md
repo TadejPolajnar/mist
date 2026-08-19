@@ -230,7 +230,7 @@ Working end-to-end and validated in WeChat DevTools: pages, components, slots, i
 2. Nested-loop hoisting
 3. Zero-Node option: bundle Tailwind's standalone binary
 4. `mistc-lsp` — diagnostics (including workspace-wide re-checks of importing
-   pages when a store file changes), completions (frontmatter symbols +
+   pages when a store or component file changes), completions (frontmatter symbols +
    template tags/attributes/events/component props), hover, go-to-definition,
    signature help, incremental sync, rename (including cross-file store
    rename) and the [editors/vscode](editors/vscode) client all ship

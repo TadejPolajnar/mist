@@ -27,7 +27,7 @@ code --install-extension mist-lang-0.1.0.vsix
   work unchanged.
 - Bracket/quote auto-closing and `//` / `/* */` comment toggling.
 - With `mistc-lsp` on your PATH (or `mist.lspPath` set): M-code diagnostics as
-  you type (re-checking importing pages workspace-wide when a store file changes), completions for state/derived/method/store names in templates plus tags, attributes, events and component props inside markup,
+  you type (re-checking importing pages workspace-wide when a store or component file changes — a deleted component flags its importers), completions for state/derived/method/store names in templates plus tags, attributes, events and component props inside markup,
   hover cards (state init, derived source, method signatures), go-to-definition
   (including into store modules), signature help, and rename for local
   state/derived/method/prop names.

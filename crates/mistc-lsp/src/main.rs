@@ -14,6 +14,7 @@ struct Backend {
     docs: Arc<RwLock<HashMap<Url, String>>>,
     diag_gen: Arc<RwLock<HashMap<Url, u64>>>,
     gen_counter: AtomicU64,
+    pending_watched: Arc<RwLock<Vec<PathBuf>>>,
 }
 
 fn doc_dir(uri: &Url) -> Option<PathBuf> {
@@ -81,18 +82,46 @@ fn diagnostics_for(uri: &Url, src: &str) -> Vec<Diagnostic> {
         let store_src = std::fs::read_to_string(dir.as_ref()?.join(import_path)).ok()?;
         mistc::frontmatter::store_module_info(&store_src).ok()
     };
-    let result = if is_app(uri) {
-        match mistc::sfc::split(src) {
-            Ok(sfc) => mistc::frontmatter::analyze(sfc.frontmatter).map(|_| ()),
-            Err(e) => Err(e),
-        }
-    } else {
-        mistc::compile_unit_with_stores(src, is_page(uri), &resolver).map(|_| ())
-    };
-    match result {
-        Ok(()) => Vec::new(),
+    if is_app(uri) {
+        return match mistc::sfc::split(src) {
+            Ok(sfc) => match mistc::frontmatter::analyze(sfc.frontmatter) {
+                Ok(_) => Vec::new(),
+                Err(e) => error_to_diagnostics(src, &e),
+            },
+            Err(e) => error_to_diagnostics(src, &e),
+        };
+    }
+    match mistc::compile_unit_with_stores(src, is_page(uri), &resolver) {
+        Ok(unit) => missing_component_diagnostics(src, dir.as_deref(), &unit),
         Err(e) => error_to_diagnostics(src, &e),
     }
+}
+
+fn missing_component_diagnostics(
+    src: &str,
+    dir: Option<&Path>,
+    unit: &mistc::Unit,
+) -> Vec<Diagnostic> {
+    let Some(dir) = dir else { return Vec::new() };
+    let mut out = Vec::new();
+    for (_, path) in &unit.used_imports {
+        if !path.ends_with(".mist") || dir.join(path).exists() {
+            continue;
+        }
+        let needle = format!("'{}'", path);
+        let range = src
+            .find(&needle)
+            .map(|i| Range { start: pos_of_byte(src, i), end: pos_of_byte(src, i + needle.len()) })
+            .unwrap_or_default();
+        out.push(Diagnostic {
+            range,
+            severity: Some(DiagnosticSeverity::ERROR),
+            source: Some("mistc".into()),
+            message: format!("component import '{}' not found — was the file moved or deleted?", path),
+            ..Default::default()
+        });
+    }
+    out
 }
 
 fn ident_char(c: char) -> bool {
@@ -194,13 +223,19 @@ fn imports_store(src: &str, file_dir: &Path, store_canon: &Path, name: &str) -> 
     false
 }
 
-fn imports_path(src: &str, file_dir: &Path, target_canon: &Path) -> bool {
+fn resolved_key(path: &Path) -> Option<PathBuf> {
+    if let Ok(canon) = path.canonicalize() {
+        return Some(canon);
+    }
+    let parent = path.parent()?.canonicalize().ok()?;
+    Some(parent.join(path.file_name()?))
+}
+
+fn imports_path(src: &str, file_dir: &Path, target_key: &Path) -> bool {
     let re = Regex::new(r#"from\s*['"](\.[^'"]+)['"]"#).unwrap();
     let hit = re.captures_iter(src).any(|caps| {
-        file_dir
-            .join(caps.get(1).unwrap().as_str())
-            .canonicalize()
-            .is_ok_and(|canon| canon == target_canon)
+        resolved_key(&file_dir.join(caps.get(1).unwrap().as_str()))
+            .is_some_and(|key| key == target_key)
     });
     hit
 }
@@ -229,21 +264,6 @@ fn project_files_with_open(root: &Path, docs: &HashMap<Url, String>) -> Vec<(Pat
         out.push((p, src));
     }
     out
-}
-
-fn store_importers<'a>(
-    files: &'a [(PathBuf, String)],
-    changed_canon: &Path,
-) -> Vec<&'a (PathBuf, String)> {
-    files
-        .iter()
-        .filter(|(path, src)| {
-            path.extension().and_then(|e| e.to_str()) == Some("mist")
-                && path
-                    .parent()
-                    .is_some_and(|dir| imports_path(src, dir, changed_canon))
-        })
-        .collect()
 }
 
 fn store_rename_edits(
@@ -850,32 +870,54 @@ impl Backend {
         });
     }
 
-    async fn rediagnose_store_importers(&self, changed: PathBuf) {
-        let Ok(changed_uri) = Url::from_file_path(&changed) else { return };
+    async fn rediagnose_watched(&self, changed: Vec<PathBuf>) {
+        let gen_key = Url::parse("mist://watched-files").unwrap();
         let generation = self.gen_counter.fetch_add(1, Ordering::SeqCst) + 1;
-        self.diag_gen.write().await.insert(changed_uri.clone(), generation);
+        self.diag_gen.write().await.insert(gen_key.clone(), generation);
+        self.pending_watched.write().await.extend(changed);
         let diag_gen = Arc::clone(&self.diag_gen);
         let docs = Arc::clone(&self.docs);
+        let pending = Arc::clone(&self.pending_watched);
         let client = self.client.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            if diag_gen.read().await.get(&changed_uri) != Some(&generation) {
+            if diag_gen.read().await.get(&gen_key) != Some(&generation) {
                 return;
             }
-            let Ok(changed_canon) = changed.canonicalize() else { return };
-            let Some(root) = changed.parent().and_then(project_src_root) else { return };
-            let files = {
-                let docs = docs.read().await;
-                project_files_with_open(&root, &docs)
-            };
-            for (path, src) in store_importers(&files, &changed_canon) {
-                let Ok(canon) = path.canonicalize() else { continue };
-                let Ok(uri) = Url::from_file_path(&canon) else { continue };
-                let diagnostics = diagnostics_for(&uri, src);
-                if diag_gen.read().await.get(&changed_uri) != Some(&generation) {
-                    return;
+            let snapshot: Vec<PathBuf> = pending.read().await.clone();
+            let mut by_root: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+            for path in &snapshot {
+                let Some(key) = resolved_key(path) else { continue };
+                let Some(root) = path.parent().and_then(project_src_root) else { continue };
+                let keys = by_root.entry(root).or_default();
+                if !keys.contains(&key) {
+                    keys.push(key);
                 }
-                client.publish_diagnostics(uri, diagnostics, None).await;
+            }
+            for (root, keys) in by_root {
+                let files = {
+                    let docs = docs.read().await;
+                    project_files_with_open(&root, &docs)
+                };
+                for (path, src) in &files {
+                    if path.extension().and_then(|e| e.to_str()) != Some("mist") {
+                        continue;
+                    }
+                    let Some(dir) = path.parent() else { continue };
+                    if !keys.iter().any(|k| imports_path(src, dir, k)) {
+                        continue;
+                    }
+                    let Ok(canon) = path.canonicalize() else { continue };
+                    let Ok(uri) = Url::from_file_path(&canon) else { continue };
+                    let diagnostics = diagnostics_for(&uri, src);
+                    if diag_gen.read().await.get(&gen_key) != Some(&generation) {
+                        return;
+                    }
+                    client.publish_diagnostics(uri, diagnostics, None).await;
+                }
+            }
+            if diag_gen.read().await.get(&gen_key) == Some(&generation) {
+                pending.write().await.retain(|p| !snapshot.contains(p));
             }
         });
     }
@@ -940,12 +982,16 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        for change in params.changes {
-            let Ok(path) = change.uri.to_file_path() else { continue };
-            if path.extension().and_then(|e| e.to_str()) != Some("ts") {
-                continue;
-            }
-            self.rediagnose_store_importers(path).await;
+        let changed: Vec<PathBuf> = params
+            .changes
+            .into_iter()
+            .filter_map(|change| change.uri.to_file_path().ok())
+            .filter(|path| {
+                matches!(path.extension().and_then(|e| e.to_str()), Some("ts") | Some("mist"))
+            })
+            .collect();
+        if !changed.is_empty() {
+            self.rediagnose_watched(changed).await;
         }
     }
 
@@ -1390,15 +1436,16 @@ mod tests {
         let bystander = "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n";
         std::fs::write(dir.join("pages/a.mist"), importer).unwrap();
         std::fs::write(dir.join("pages/b.mist"), bystander).unwrap();
-        let files = vec![
-            (dir.join("pages/a.mist"), importer.to_string()),
-            (dir.join("pages/b.mist"), bystander.to_string()),
-            (dir.join("stores/cart.ts"), "export function add() {}\n".to_string()),
-        ];
         let canon = dir.join("stores/cart.ts").canonicalize().unwrap();
-        let hits = store_importers(&files, &canon);
-        assert_eq!(hits.len(), 1, "only the importing page");
-        assert!(hits[0].0.ends_with("pages/a.mist"));
+        assert!(imports_path(importer, &dir.join("pages"), &canon), "importer must match");
+        assert!(!imports_path(bystander, &dir.join("pages"), &canon), "bystander must not");
+        let deleted = dir.join("stores/gone.ts");
+        let deleted_key = resolved_key(&deleted).unwrap();
+        let ghost = "---\nimport { x } from '../stores/gone.ts'\n---\n<span onTap={x}>y</span>\n";
+        assert!(
+            imports_path(ghost, &dir.join("pages"), &deleted_key),
+            "deleted targets must still match via resolved_key"
+        );
     }
 
     #[test]
@@ -1436,6 +1483,7 @@ async fn main() {
         docs: Arc::new(RwLock::new(HashMap::new())),
         diag_gen: Arc::new(RwLock::new(HashMap::new())),
         gen_counter: AtomicU64::new(0),
+        pending_watched: Arc::new(RwLock::new(Vec::new())),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
