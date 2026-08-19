@@ -18,11 +18,17 @@ disagree, these docs are right.
 
 ## Getting started
 
-Prerequisites: Rust, Node.js + npm (Tailwind + tests), WeChat DevTools.
+Prerequisites: Node.js + npm (Tailwind + tests), WeChat DevTools.
+
+```sh
+npm install -g mist-lang       # mistc + mistc-lsp, prebuilt for macOS/Linux/Windows
+```
+
+Or from source (needs Rust):
 
 ```sh
 git clone https://github.com/TadejPolajnar/mist.git && cd mist
-cargo install --path . && cargo install --path crates/mistc-lsp   # mistc + mistc-lsp on PATH
+cargo install --path . && cargo install --path crates/mistc-lsp
 ```
 
 Scaffold, build, and iterate:
@@ -35,9 +41,11 @@ mistc test                     # run tests/*.test.js in a Node harness
 # WeChat DevTools → Import Project → select my-app/
 ```
 
-Editor support ships today: install the extension in `editors/vscode/` for
-`.mist` syntax highlighting plus LSP diagnostics, completions, hover,
-go-to-definition, signature help and rename (see `editors/vscode/README.md`).
+Editor support: install **[Mist for WeChat Mini Programs](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)**
+from the VS Code Marketplace (`tadejpolajnar.mist-lang`) — `.mist` syntax
+highlighting plus LSP diagnostics, completions, hover, go-to-definition,
+signature help and rename, powered by the `mistc-lsp` binary that
+`npm install -g mist-lang` puts on your PATH.
 
 `mistc --help` / `mistc build --help` document every flag.
 

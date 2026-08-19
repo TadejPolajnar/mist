@@ -27,9 +27,12 @@
 ## 安装
 
 ```sh
-npm install -g mist-lang     # macOS / Linux / Windows 预编译二进制
+npm install -g mist-lang     # mistc + mistc-lsp，macOS / Linux / Windows 预编译
 mistc --version
 ```
+
+VS Code：安装 **[Mist for WeChat Mini Programs](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)** 获得高亮、诊断、
+补全和重命名。
 
 也可以从源码安装：在仓库克隆中执行 `cargo install --path .`（Rust 2021）。
 两种方式都还需要 PATH 中的 **Node.js + npm**（Tailwind 通过真实的
@@ -104,7 +107,7 @@ cargo run -- build examples/project/src -o dist   # 编译最小示例
 # 微信开发者工具 → 导入项目 → 选择本仓库根目录（miniprogramRoot: dist/）
 
 cargo test              # 完整测试套件（会调用 node 和 npm）
-cargo install --path crates/mistc-lsp   # 编辑器 LSP（配合 editors/vscode）
+cargo install --path crates/mistc-lsp   # 从源码装 LSP（npm install -g mist-lang 也自带）
 ```
 
 ### 命令行
@@ -217,7 +220,7 @@ src/
 1. 真机基准数据（需要已注册的 AppID）
 2. 嵌套循环提升
 3. 零 Node 方案：打包 Tailwind 独立二进制
-4. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [editors/vscode](editors/vscode) 客户端均已可用
+4. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)（`tadejpolajnar.mist-lang`，商店已上架）均已可用
 
 ## 许可证
 

@@ -17,12 +17,23 @@ Mist 是一门**面向微信小程序的组件语言与编译器**：你编写 A
 
 ## 快速上手
 
-环境要求：Rust、Node.js + npm（Tailwind 与测试需要）、微信开发者工具。
+环境要求：Node.js + npm（Tailwind 与测试需要）、微信开发者工具。
+
+```sh
+npm install -g mist-lang       # mistc + mistc-lsp，macOS/Linux/Windows 预编译
+```
+
+也可以从源码安装（需要 Rust）：
 
 ```sh
 git clone https://github.com/TadejPolajnar/mist.git && cd mist
-cargo install --path . && cargo install --path crates/mistc-lsp   # 把 mistc 和 mistc-lsp 装进 PATH
+cargo install --path . && cargo install --path crates/mistc-lsp
 ```
+
+编辑器支持：在 VS Code 商店安装 **[Mist for WeChat Mini Programs](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)**
+（`tadejpolajnar.mist-lang`）——`.mist` 语法高亮加上 LSP 诊断、补全、悬停、
+跳转定义、签名帮助和重命名，由 `npm install -g mist-lang` 装好的
+`mistc-lsp` 提供。
 
 脚手架、构建、迭代：
 

@@ -1,6 +1,6 @@
 # Handoff: Distribute `mistc` on npm
 
-Status: implemented but not yet published — the npm/ tree, shim and release workflow exist; packages appear on npm with the first tagged release. Until then, install with cargo (see the README quickstart).
+Status: live — published to npm via trusted publishing on every `v<semver>` tag; since v0.3.0 the platform packages also ship `mistc-lsp`. The VS Code extension publishes separately on `vscode-v<semver>` tags (see the section at the end).
 
 ## Goal
 

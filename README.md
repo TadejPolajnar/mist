@@ -38,9 +38,12 @@ Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template 
 ## Install
 
 ```sh
-npm install -g mist-lang     # prebuilt binaries for macOS / Linux / Windows
+npm install -g mist-lang     # mistc + mistc-lsp, prebuilt for macOS / Linux / Windows
 mistc --version
 ```
+
+VS Code: install **[Mist for WeChat Mini Programs](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)** for highlighting,
+diagnostics, completions and rename.
 
 Or from source: `cargo install --path .` in a clone of this repo (Rust 2021).
 Either way you also need **Node.js + npm** on PATH (Tailwind runs through the
@@ -105,7 +108,7 @@ cargo run -- build examples/project/src -o dist   # compile the smallest example
 # WeChat DevTools: Import Project → THIS repo folder (miniprogramRoot: dist/)
 
 cargo test              # full suite (spawns node + npm)
-cargo install --path crates/mistc-lsp   # LSP for editors/vscode
+cargo install --path crates/mistc-lsp   # LSP from source (npm install -g mist-lang also ships it)
 ```
 
 ### CLI
@@ -233,7 +236,7 @@ Working end-to-end and validated in WeChat DevTools: pages, components, slots, i
    pages when a store or component file changes), completions (frontmatter symbols +
    template tags/attributes/events/component props), hover, go-to-definition,
    signature help, incremental sync, rename (including cross-file store
-   rename) and the [editors/vscode](editors/vscode) client all ship
+   rename) and the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang) (`tadejpolajnar.mist-lang`, Marketplace) all ship
 
 ## License
 
