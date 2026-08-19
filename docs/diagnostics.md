@@ -4,7 +4,7 @@ Errors carry a code and a fix; M1001, M1004, M1007, M1011, M1013, M1017 and
 M1021 and M1022 include file line:col and M1010 the line (other codes report the file
 path only; M1015 reports line:col for import-shape errors and file path only
 for the `pluginComponents` value/collision checks). Warnings (`M1002`,
-`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`) go to stderr and
+`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`, `M1027`) go to stderr and
 never fail the build. M1020 is the exception among warnings above in name
 only — it is a warning when the tab bar file exists without the config flag,
 but an error when the flag is set without the file (see below).
@@ -428,3 +428,23 @@ Return values are ordinary data — assign them to state freely. The check
 covers direct calls, including member calls (`dayjs.utc(...)`); routing a
 reactive value through an alias or callback is the same untracked frontier
 M1001 documents.
+
+## M1027 — feature exceeds config.minLibVersion
+
+Opt-in: declare `config.minLibVersion` (the base-library minimum you set in
+the WeChat admin console) and the compiler checks every used native feature
+with a documented minimum against it:
+
+```ts
+export const config = { minLibVersion: '2.9.0' }
+```
+
+```jsx
+<scroll-view refresher-enabled />   // ✗ M1027 — refresher-enabled needs ≥ 2.10.1
+<input value:bind={text} />         // ✗ M1027 — value:bind needs ≥ 2.9.3
+```
+
+Fix by raising `minLibVersion` (and the console setting) or dropping the
+feature. The version table is curated and deliberately incomplete — features
+without a recorded minimum are never checked, and without `minLibVersion` no
+version checks run at all. Warning-tier: staleness never breaks builds.

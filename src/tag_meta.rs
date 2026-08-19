@@ -438,3 +438,60 @@ pub fn suggest_attr(meta: &TagMeta, attr: &str) -> Option<String> {
         .min_by_key(|(_, d)| *d)
         .map(|(a, _)| a.to_string())
 }
+
+/// Documented WeChat base-library minimums for table features — curated,
+/// deliberately incomplete: absence means "no version check", never an error.
+pub const SINCE: &[(&str, &str, &str)] = &[
+    ("input", "value:bind", "2.9.3"),
+    ("textarea", "value:bind", "2.9.3"),
+    ("switch", "checked:bind", "2.9.3"),
+    ("checkbox", "checked:bind", "2.9.3"),
+    ("scroll-view", "refresher-enabled", "2.10.1"),
+    ("scroll-view", "refresher-threshold", "2.10.1"),
+    ("scroll-view", "refresher-default-style", "2.10.1"),
+    ("scroll-view", "refresher-background", "2.10.1"),
+    ("scroll-view", "refresher-triggered", "2.10.1"),
+    ("scroll-view", "onRefresherPulling", "2.10.1"),
+    ("scroll-view", "onRefresherRefresh", "2.10.1"),
+    ("scroll-view", "onRefresherRestore", "2.10.1"),
+    ("scroll-view", "onRefresherAbort", "2.10.1"),
+    ("scroll-view", "enhanced", "2.12.0"),
+    ("scroll-view", "bounces", "2.12.0"),
+    ("scroll-view", "show-scrollbar", "2.12.0"),
+    ("scroll-view", "paging-enabled", "2.12.0"),
+    ("scroll-view", "fast-deceleration", "2.12.0"),
+    ("scroll-view", "onDragStart", "2.12.0"),
+    ("scroll-view", "onDragging", "2.12.0"),
+    ("scroll-view", "onDragEnd", "2.12.0"),
+    ("text", "user-select", "2.12.1"),
+    ("image", "webp", "2.9.0"),
+    ("image", "show-menu-by-longpress", "2.7.0"),
+    ("swiper", "easing-function", "2.6.5"),
+    ("swiper", "snap-to-edge", "2.12.1"),
+    ("input", "onKeyboardHeightChange", "2.7.0"),
+    ("textarea", "onKeyboardHeightChange", "2.7.0"),
+    ("input", "onNicknameReview", "2.29.1"),
+    ("button", "onChooseAvatar", "2.21.2"),
+    ("button", "onGetRealtimePhoneNumber", "2.24.4"),
+    ("button", "onAgreePrivacyAuthorization", "2.32.3"),
+];
+
+pub fn since_of(tag: &str, name: &str) -> Option<&'static str> {
+    SINCE.iter().find(|(t, n, _)| *t == tag && *n == name).map(|(_, _, v)| *v)
+}
+
+/// `a < b` for dotted numeric versions ("2.9.3" < "2.10.1").
+pub fn version_lt(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split('.').map(|p| p.parse().unwrap_or(0)).collect()
+    };
+    let (va, vb) = (parse(a), parse(b));
+    for i in 0..va.len().max(vb.len()) {
+        let x = va.get(i).copied().unwrap_or(0);
+        let y = vb.get(i).copied().unwrap_or(0);
+        if x != y {
+            return x < y;
+        }
+    }
+    false
+}

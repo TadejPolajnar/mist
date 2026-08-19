@@ -38,6 +38,8 @@ pub struct Analysis {
     pub custom_tags: Vec<String>,
     /// `config.customAttrs` — attr/event names that suppress M1023/M1024
     pub custom_attrs: Vec<String>,
+    /// `config.minLibVersion` — opt-in base-library floor for M1027 since-version checks
+    pub min_lib_version: Option<String>,
     /// bare npm imports (SPEC §12 boundary rule) — bundled to `vendor/` in project builds
     pub npm_imports: Vec<NpmImport>,
     /// `config.virtualHost` — component-only; removes the wrapper node
@@ -514,6 +516,7 @@ pub fn analyze_with_stores_bound(
     let mut plugin_components_raw: Option<String> = None;
     let mut custom_tags_raw: Option<String> = None;
     let mut custom_attrs_raw: Option<String> = None;
+    let mut min_lib_version: Option<String> = None;
     let mut component_options_raw: Option<String> = None;
     let mut plain_stmts: Vec<Span> = Vec::new();
     let mut plain_consts: Vec<String> = Vec::new();
@@ -687,6 +690,11 @@ pub fn analyze_with_stores_bound(
                                     None => (None, None),
                                 };
                                 custom_attrs_raw = custom_attrs;
+                                let (min_lib, remaining) = match remaining {
+                                    Some(raw) => split_min_lib_config(&raw)?,
+                                    None => (None, None),
+                                };
+                                min_lib_version = min_lib;
                                 let (component_options, remaining) = match remaining {
                                     Some(raw) => split_component_options_config(&raw)?,
                                     None => (None, None),
@@ -1090,6 +1098,7 @@ pub fn analyze_with_stores_bound(
         plugin_components,
         custom_tags,
         custom_attrs,
+        min_lib_version,
         npm_imports,
         virtual_host: component_options.virtual_host,
         pure_data_pattern: component_options.pure_data_pattern,
@@ -1259,6 +1268,56 @@ fn plugin_components_config_entries(raw: &str) -> Result<Vec<(String, String)>, 
         out.push((key, value));
     }
     Ok(out)
+}
+
+fn split_min_lib_config(raw: &str) -> Result<(Option<String>, Option<String>), String> {
+    let wrapped = format!("({})", raw);
+    let allocator = Allocator::default();
+    let source_type = SourceType::default().with_typescript(true);
+    let ret = Parser::new(&allocator, &wrapped, source_type).parse();
+    if !ret.errors.is_empty() {
+        return Ok((None, Some(raw.to_string())));
+    }
+    let Some(Statement::ExpressionStatement(es)) = ret.program.body.first() else {
+        return Ok((None, Some(raw.to_string())));
+    };
+    let Expression::ObjectExpression(obj) = unparenthesize(&es.expression) else {
+        return Ok((None, Some(raw.to_string())));
+    };
+    let mut version = None;
+    let mut kept: Vec<String> = Vec::new();
+    for p in &obj.properties {
+        let mut is_min_lib = false;
+        if let ObjectPropertyKind::ObjectProperty(op) = p {
+            if op.key.static_name().as_deref() == Some("minLibVersion") {
+                is_min_lib = true;
+                let Expression::StringLiteral(v) = unparenthesize(&op.value) else {
+                    return Err("config.minLibVersion must be a string literal like '2.11.0'".to_string());
+                };
+                let value = v.value.to_string();
+                let ok = !value.is_empty()
+                    && value.split('.').all(|seg| !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit()));
+                if !ok {
+                    return Err(format!(
+                        "config.minLibVersion '{}' must be a dotted number like '2.11.0'",
+                        value
+                    ));
+                }
+                version = Some(value);
+            }
+        }
+        if !is_min_lib {
+            let span = p.span();
+            kept.push(wrapped[span.start as usize..span.end as usize].to_string());
+        }
+    }
+    if version.is_none() {
+        return Ok((None, Some(raw.to_string())));
+    }
+    if kept.is_empty() {
+        return Ok((version, None));
+    }
+    Ok((version, Some(format!("{{ {} }}", kept.join(", ")))))
 }
 
 fn split_custom_tags_config(raw: &str) -> Result<(Option<String>, Option<String>), String> {

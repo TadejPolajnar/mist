@@ -102,7 +102,7 @@ async function main() {
   check('completion-tags', tlabels.includes('scroll-view') && tlabels.includes('div'), JSON.stringify(tlabels.slice(0, 10)))
   const acomp = await send('textDocument/completion', { textDocument: { uri }, position: { line: 7, character: 6 } }, true)
   const alabels = (acomp.result || []).map((c) => `${c.label}:${c.detail}`)
-  check('completion-attrs', alabels.includes('user-select:attribute') && alabels.includes('onLongPress:event'), JSON.stringify(alabels.slice(0, 12)))
+  check('completion-attrs', alabels.some((l) => l.startsWith('user-select:attribute')) && alabels.includes('onLongPress:event') && alabels.includes('user-select:attribute (≥2.12.1)'), JSON.stringify(alabels.slice(0, 12)))
   const hover = await send('textDocument/hover', { textDocument: { uri }, position: { line: 7, character: 20 } }, true)
   check('hover', hover.result && hover.result.contents.value.includes('**toggle**(i, done)'), JSON.stringify(hover.result))
   const def = await send('textDocument/definition', { textDocument: { uri }, position: { line: 7, character: 20 } }, true)

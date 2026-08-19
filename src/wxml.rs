@@ -28,6 +28,9 @@ pub struct WxmlOutput {
     /// unknown events/attributes on native tags present in `tag_meta::TAG_META`
     /// — deduped, M1023 (events) / M1024 (attributes)
     pub meta_warnings: Vec<MetaWarning>,
+    /// used features with a documented base-library minimum — (tag, name, since),
+    /// deduped; compared against `config.minLibVersion` for M1027
+    pub since_hits: Vec<(String, String, String)>,
 }
 
 pub struct MetaWarning {
@@ -64,6 +67,7 @@ struct Ctx {
     loop_params: Vec<String>,
     unknown_tags: Vec<(String, Option<String>)>,
     meta_warnings: Vec<MetaWarning>,
+    since_hits: Vec<(String, String, String)>,
 }
 
 pub fn emit(
@@ -93,6 +97,7 @@ pub fn emit(
         loop_params: Vec::new(),
         unknown_tags: Vec::new(),
         meta_warnings: Vec::new(),
+        since_hits: Vec::new(),
     };
     let mut out = String::new();
     emit_nodes(nodes, &mut ctx, &mut out, 0)?;
@@ -107,6 +112,7 @@ pub fn emit(
         for_hoists: ctx.for_hoists,
         unknown_tags: ctx.unknown_tags,
         meta_warnings: ctx.meta_warnings,
+        since_hits: ctx.since_hits,
     })
 }
 
@@ -414,6 +420,9 @@ fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool, n
         // native model:<prop> renders without setData echo; the companion event handler
         // keeps the logic-side mirror + deriveds in sync through the normal batch
         out.push_str(&format!(" model:{}=\"{{{{{}}}}}\" {}=\"__vb_{}\"", prop, name, companion, name));
+        if !is_component {
+            ctx.record_since(native, &format!("{}:bind", prop));
+        }
         if !ctx.vbinds.contains(&name) {
             ctx.vbinds.push(name);
         }
@@ -429,6 +438,7 @@ fn emit_attr(attr: &Attr, ctx: &mut Ctx, out: &mut String, is_component: bool, n
         && !attr.name.starts_with("data-")
         && !attr.name.starts_with("aria-")
     {
+        ctx.record_since(native, &attr.name);
         if let Some(meta) = crate::tag_meta::meta_for(native) {
             if !crate::tag_meta::valid_attr(meta, &attr.name)
                 && !ctx.meta_warnings.iter().any(|w| w.tag == native && w.name == attr.name)
@@ -481,6 +491,7 @@ fn emit_event(attr: &Attr, event: &str, ctx: &mut Ctx, out: &mut String, is_comp
         format!("{}:{}", flavor.trim_end_matches(':'), crate::frontmatter::event_name(&format!("on{}", event)))
     } else {
         let mapped = map_event(event);
+        ctx.record_since(native, &format!("on{}", event));
         if let Some(meta) = crate::tag_meta::meta_for(native) {
             let source = format!("on{}", event);
             if !crate::tag_meta::valid_event(meta, &mapped)
@@ -655,6 +666,14 @@ pub(crate) fn split_top_level_commas(s: &str) -> Vec<String> {
 }
 
 impl Ctx {
+    fn record_since(&mut self, tag: &str, name: &str) {
+        if let Some(since) = crate::tag_meta::since_of(tag, name) {
+            if !self.since_hits.iter().any(|(t, n, _)| t == tag && n == name) {
+                self.since_hits.push((tag.to_string(), name.to_string(), since.to_string()));
+            }
+        }
+    }
+
     fn bind(&self, expr: &str) -> String {
         let t = expr.trim();
         if let Some((_, r)) = self.rewrites.iter().find(|(e, _)| e == t) {

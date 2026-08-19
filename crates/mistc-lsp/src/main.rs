@@ -670,10 +670,22 @@ fn native_attr_completions(tag: &str) -> Vec<CompletionItem> {
     }
     if let Some(meta) = mistc::tag_meta::meta_for(native) {
         for a in meta.attrs {
-            items.push(attr_item(a, "attribute"));
+            match mistc::tag_meta::since_of(native, a) {
+                Some(since) => items.push(attr_item(a, &format!("attribute (≥{})", since))),
+                None => items.push(attr_item(a, "attribute")),
+            }
         }
         for e in meta.events {
-            items.push(event_item(e));
+            let label = format!("on{}", e);
+            match mistc::tag_meta::since_of(native, &label) {
+                Some(since) => items.push(CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::EVENT),
+                    detail: Some(format!("event (≥{})", since)),
+                    ..Default::default()
+                }),
+                None => items.push(event_item(e)),
+            }
         }
     }
     items

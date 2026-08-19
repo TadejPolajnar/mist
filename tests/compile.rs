@@ -1279,3 +1279,45 @@ fn npm_imports_allow_primitives_locals_and_returns() {
     assert!(out.js.contains("const { format } = require('./datefmt.js');"), "js:\n{}", out.js);
     assert!(out.js.contains("this.__set('label', format(ts, 'YYYY'))"), "js:\n{}", out.js);
 }
+
+#[test]
+fn m1027_warns_when_feature_exceeds_min_lib_version() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { minLibVersion: '2.9.0' }\nfunction pull() { n.value++ }\n---\n<scroll-view scroll-y refresher-enabled onRefresherRefresh={pull}>{n.value}</scroll-view>\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    let m1027: Vec<&String> = unit.warnings.iter().filter(|w| w.contains("M1027")).collect();
+    assert_eq!(m1027.len(), 2, "warnings: {:?}", unit.warnings);
+    assert!(m1027.iter().any(|w| w.contains("refresher-enabled") && w.contains("2.10.1")), "warnings: {:?}", unit.warnings);
+    assert!(m1027.iter().any(|w| w.contains("onRefresherRefresh")), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1027_silent_when_min_lib_high_enough_or_absent() {
+    let with_version = "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { minLibVersion: '2.10.1' }\nfunction pull() { n.value++ }\n---\n<scroll-view scroll-y refresher-enabled onRefresherRefresh={pull}>{n.value}</scroll-view>\n";
+    let unit = mistc::compile_unit(with_version, true).expect("compile failed");
+    assert!(unit.warnings.is_empty(), "warnings: {:?}", unit.warnings);
+
+    let without = "---\nimport { state } from 'mist'\nconst n = state(0)\nfunction pull() { n.value++ }\n---\n<scroll-view scroll-y refresher-enabled onRefresherRefresh={pull}>{n.value}</scroll-view>\n";
+    let unit = mistc::compile_unit(without, true).expect("compile failed");
+    assert!(unit.warnings.is_empty(), "warnings: {:?}", unit.warnings);
+}
+
+#[test]
+fn m1027_covers_value_bind_and_stays_out_of_json() {
+    let src = "---\nimport { state } from 'mist'\nconst text = state('')\nexport const config = { minLibVersion: '2.8.0', navigationBarTitleText: 'x' }\n---\n<input value:bind={text} />\n";
+    let unit = mistc::compile_unit(src, true).expect("compile failed");
+    assert!(
+        unit.warnings.iter().any(|w| w.contains("M1027") && w.contains("value:bind") && w.contains("2.9.3")),
+        "warnings: {:?}",
+        unit.warnings
+    );
+    let json = unit.output.json.expect("json");
+    assert!(!json.contains("minLibVersion"), "compile-time key leaked: {}", json);
+    assert!(json.contains("navigationBarTitleText"), "json: {}", json);
+}
+
+#[test]
+fn min_lib_version_rejects_garbage() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { minLibVersion: 'latest' }\n---\n<span>{n.value}</span>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("minLibVersion"), "err: {}", err);
+}

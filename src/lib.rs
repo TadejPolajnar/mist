@@ -484,6 +484,17 @@ fn compile_unit_full_route(
         }
     }
 
+    if let Some(min) = &analysis.min_lib_version {
+        for (tag, name, since) in &wxml_out.since_hits {
+            if tag_meta::version_lt(min, since) {
+                warnings.push(format!(
+                    "M1027: {} on <{}> needs base library ≥ {} but config.minLibVersion is '{}'\n  help: raise minLibVersion or drop the feature; the app's admin-console minimum must match",
+                    name, tag, since, min
+                ));
+            }
+        }
+    }
+
     let json = build_json(analysis.config.as_deref(), &using, is_page)?;
 
     // inlined children render inside this unit — import their template partials

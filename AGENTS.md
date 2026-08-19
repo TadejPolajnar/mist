@@ -204,7 +204,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    instead when that's statically extractable via
    `frontmatter::config_tab_bar_page_paths`; flat/single-file builds compile
    `navigate()` calls with no route-list check at all — no route set exists).
-   M1001–M1026 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs).
+   M1001–M1027 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs; M1027 used feature exceeds `config.minLibVersion` — curated `SINCE` table in tag_meta.rs, opt-in, warning-tier).
    Frontmatter TS is type-stripped (`strip_types`, whitespace-
    preserving blanking) before analysis, so annotations never reach emitted JS.
    `tests/diagnostics.rs` asserts on message substrings — reformatting breaks it.

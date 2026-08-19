@@ -381,6 +381,21 @@ export const config = {
 `customTags` entries are consumed at compile time (letters/digits/`-`/`_`
 only) and never reach the `.json`.
 
+Declare your app's base-library floor to get since-version checks
+(**M1027**) on top:
+
+```ts
+export const config = {
+  minLibVersion: '2.11.0',
+}
+```
+
+With it set, using a feature whose documented WeChat minimum is higher —
+`refresher-enabled` needs 2.10.1, `value:bind` needs 2.9.3 — warns with the
+exact versions. Without it, no version checks run. Compile-time only, never
+reaches the `.json`; keep it in sync with the minimum you set in the WeChat
+admin console.
+
 Events and attributes on everyday native tags are checked the same way:
 a typo'd `onScrolToLower` or `scrol-y` — which WeChat would silently
 ignore — gets an **M1023**/**M1024** warning with a did-you-mean. Only tags
