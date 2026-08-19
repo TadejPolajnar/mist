@@ -35,7 +35,7 @@ Or package a `.vsix` yourself:
 
 ```sh
 npm ci && npx @vscode/vsce package
-code --install-extension mist-lang-0.2.0.vsix
+code --install-extension mist-lang-0.3.0.vsix
 ```
 
 Releases: pushing a `vscode-v<version>` tag (matching `package.json`) runs
