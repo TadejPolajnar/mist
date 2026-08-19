@@ -1148,3 +1148,61 @@ fn npm_vendor_require_path_is_depth_aware_for_subpackages() {
     let vendor = p.files.iter().find(|f| f.out_path == "vendor/greeting").expect("vendor missing");
     assert!(vendor.output.js.contains("yo "), "vendor:\n{}", vendor.output.js);
 }
+
+#[test]
+fn app_level_min_lib_version_propagates_to_pages_and_inlined_components() {
+    let dir = std::env::temp_dir().join("mist-minlib-app-floor");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::write(
+        dir.join("components/Label.mist"),
+        "---\nimport { props } from 'mist'\nconst { txt } = props({ txt: '' })\n---\n<text user-select>{txt}</text>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport Label from '../components/Label.mist'\nimport { state } from 'mist'\nconst n = state(0)\nfunction pull() { n.value++ }\n---\n<scroll-view scroll-y refresher-enabled onRefresherRefresh={pull}><Label txt=\"x\" />{n.value}</scroll-view>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nexport const config = { minLibVersion: '2.9.0' }\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    let m1027: Vec<&String> = p.warnings.iter().filter(|w| w.contains("M1027")).collect();
+    assert!(
+        m1027.iter().any(|w| w.contains("refresher-enabled")),
+        "app floor must reach pages: {:?}",
+        p.warnings
+    );
+    assert!(
+        m1027.iter().any(|w| w.contains("user-select") && w.contains("Label.mist")),
+        "app floor must reach inlined components: {:?}",
+        p.warnings
+    );
+}
+
+#[test]
+fn page_min_lib_version_overrides_app_floor() {
+    let dir = std::env::temp_dir().join("mist-minlib-page-override");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { minLibVersion: '2.10.1' }\nfunction pull() { n.value++ }\n---\n<scroll-view scroll-y refresher-enabled onRefresherRefresh={pull}>{n.value}</scroll-view>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nexport const config = { minLibVersion: '2.9.0' }\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    assert!(
+        p.warnings.iter().all(|w| !w.contains("M1027")),
+        "page floor 2.10.1 must override the app's 2.9.0: {:?}",
+        p.warnings
+    );
+}

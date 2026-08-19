@@ -390,6 +390,8 @@ export const config = {
 }
 ```
 
+Declare it once in `app.mist` and every page and component (including
+inlined ones) inherits the floor; a unit's own `minLibVersion` overrides it.
 With it set, using a feature whose documented WeChat minimum is higher —
 `refresher-enabled` needs 2.10.1, `value:bind` needs 2.9.3 — warns with the
 exact versions. Without it, no version checks run. Compile-time only, never

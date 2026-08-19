@@ -432,7 +432,8 @@ M1001 documents.
 ## M1027 — feature exceeds config.minLibVersion
 
 Opt-in: declare `config.minLibVersion` (the base-library minimum you set in
-the WeChat admin console) and the compiler checks every used native feature
+the WeChat admin console) — once in `app.mist` for the whole project, or
+per unit to override — and the compiler checks every used native feature
 with a documented minimum against it:
 
 ```ts

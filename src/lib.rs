@@ -181,7 +181,7 @@ fn compile_unit_full(
     scope_name: &str,
     resolve_store: &dyn Fn(&str) -> Option<frontmatter::StoreModuleInfo>,
 ) -> Result<Unit, String> {
-    compile_unit_full_route(source, is_page, inline, layout, depth, scope_name, None, resolve_store)
+    compile_unit_full_route(source, is_page, inline, layout, depth, scope_name, None, None, resolve_store)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -193,6 +193,7 @@ fn compile_unit_full_route(
     depth: usize,
     scope_name: &str,
     route_param: Option<&str>,
+    project_min_lib: Option<&str>,
     resolve_store: &dyn Fn(&str) -> Option<frontmatter::StoreModuleInfo>,
 ) -> Result<Unit, String> {
     let sfc = sfc::split(source)?;
@@ -462,38 +463,8 @@ fn compile_unit_full_route(
         }
     }
 
-    for w in &wxml_out.meta_warnings {
-        if analysis.custom_attrs.iter().any(|a| a == &w.name) {
-            continue;
-        }
-        let hint = w
-            .suggestion
-            .as_ref()
-            .map(|s| format!("; did you mean {}?", s))
-            .unwrap_or_default();
-        if w.is_event {
-            warnings.push(format!(
-                "M1023: unknown event {} on <{}> — WeChat silently ignores unknown events{}\n  help: add '{}' to config.customAttrs to suppress",
-                w.name, w.tag, hint, w.name
-            ));
-        } else {
-            warnings.push(format!(
-                "M1024: unknown attribute '{}' on <{}> — WeChat silently ignores unknown attributes{}\n  help: add '{}' to config.customAttrs to suppress",
-                w.name, w.tag, hint, w.name
-            ));
-        }
-    }
-
-    if let Some(min) = &analysis.min_lib_version {
-        for (tag, name, since) in &wxml_out.since_hits {
-            if tag_meta::version_lt(min, since) {
-                warnings.push(format!(
-                    "M1027: {} on <{}> needs base library ≥ {} but config.minLibVersion is '{}'\n  help: raise minLibVersion or drop the feature; the app's admin-console minimum must match",
-                    name, tag, since, min
-                ));
-            }
-        }
-    }
+    let effective_min_lib = analysis.min_lib_version.as_deref().or(project_min_lib);
+    warnings.extend(meta_warning_texts(&wxml_out, &analysis.custom_attrs, effective_min_lib));
 
     let json = build_json(analysis.config.as_deref(), &using, is_page)?;
 
@@ -540,10 +511,51 @@ fn compile_unit_full_route(
 
 /// Compile a pure-render component as a `<template name="...">` partial:
 /// no JS, no JSON — it renders in its parent's context.
-fn compile_template_unit(source: &str, name: &str) -> Result<Unit, String> {
+fn meta_warning_texts(
+    wxml_out: &wxml::WxmlOutput,
+    custom_attrs: &[String],
+    min_lib: Option<&str>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for w in &wxml_out.meta_warnings {
+        if custom_attrs.iter().any(|a| a == &w.name) {
+            continue;
+        }
+        let hint = w
+            .suggestion
+            .as_ref()
+            .map(|s| format!("; did you mean {}?", s))
+            .unwrap_or_default();
+        if w.is_event {
+            warnings.push(format!(
+                "M1023: unknown event {} on <{}> — WeChat silently ignores unknown events{}\n  help: add '{}' to config.customAttrs to suppress",
+                w.name, w.tag, hint, w.name
+            ));
+        } else {
+            warnings.push(format!(
+                "M1024: unknown attribute '{}' on <{}> — WeChat silently ignores unknown attributes{}\n  help: add '{}' to config.customAttrs to suppress",
+                w.name, w.tag, hint, w.name
+            ));
+        }
+    }
+    if let Some(min) = min_lib {
+        for (tag, name, since) in &wxml_out.since_hits {
+            if tag_meta::version_lt(min, since) {
+                warnings.push(format!(
+                    "M1027: {} on <{}> needs base library ≥ {} but config.minLibVersion is '{}'\n  help: raise minLibVersion or drop the feature; the app's admin-console minimum must match",
+                    name, tag, since, min
+                ));
+            }
+        }
+    }
+    warnings
+}
+
+fn compile_template_unit(source: &str, name: &str, project_min_lib: Option<&str>) -> Result<Unit, String> {
     let sfc = sfc::split(source)?;
     let nodes = template::parse_at(sfc.template, sfc.template_line)?;
     let wxml_out = wxml::emit(&nodes, &[], &[], &[])?;
+    let template_warnings = meta_warning_texts(&wxml_out, &[], project_min_lib);
     let body: String = wxml_out.wxml.lines().map(|l| format!("  {}\n", l)).collect();
     let mut wxml = format!("<template name=\"{}\">\n{}</template>\n", name, body);
     let mut classes = tailwind::extract_classes(&nodes);
@@ -566,7 +578,7 @@ fn compile_template_unit(source: &str, name: &str) -> Result<Unit, String> {
         style,
         store_import_paths: Vec::new(),
         npm_packages: Vec::new(),
-        warnings: Vec::new(),
+        warnings: template_warnings,
         route_refs: Vec::new(),
     })
 }
@@ -703,6 +715,10 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
     }
 
     let mut ctx = new_project_ctx(Layout::Nested);
+    ctx.min_lib = sfc::split(&app_source)
+        .ok()
+        .and_then(|s| frontmatter::analyze(s.frontmatter).ok())
+        .and_then(|a| a.min_lib_version);
     ctx.theme = std::fs::read_to_string(src.join("theme.css")).ok();
     warn_dropped_mist_subdirs(&pages_entries, "pages", &mut ctx);
     for page in &page_paths {
@@ -943,6 +959,7 @@ fn warn_dropped_mist_subdirs(pages_entries: &[PathBuf], label: &str, ctx: &mut P
 fn new_project_ctx(layout: Layout) -> ProjectCtx {
     ProjectCtx {
         npm_packages: std::collections::BTreeSet::new(),
+        min_lib: None,
         seen: Vec::new(),
         files: Vec::new(),
         classes: Vec::new(),
@@ -1219,6 +1236,9 @@ enum UnitKind {
 
 struct ProjectCtx {
     npm_packages: std::collections::BTreeSet<String>,
+    /// app.mist's `config.minLibVersion` — the project-wide floor units inherit
+    /// unless they declare their own
+    min_lib: Option<String>,
     seen: Vec<PathBuf>,
     files: Vec<CompiledFile>,
     classes: Vec<String>,
@@ -1273,7 +1293,10 @@ fn compile_rec_at(
     };
 
     if kind == UnitKind::Template {
-        let unit = compile_template_unit(&source, &name).map_err(|e| format!("{}: {}", path.display(), e))?;
+        let floor = ctx.min_lib.clone();
+        let unit = compile_template_unit(&source, &name, floor.as_deref())
+            .map_err(|e| format!("{}: {}", path.display(), e))?;
+        ctx.warnings.extend(unit.warnings.iter().map(|w| format!("{}: {}", path.display(), w)));
         for c in &unit.classes {
             ctx.class_sources.entry(c.clone()).or_insert_with(|| path.display().to_string());
         }
@@ -1312,6 +1335,7 @@ fn compile_rec_at(
             }
         }
     }
+    let floor = ctx.min_lib.clone();
     let unit = compile_unit_full_route(
         &source,
         is_page,
@@ -1320,6 +1344,7 @@ fn compile_rec_at(
         depth,
         &name,
         route.map(|(_, p)| p),
+        floor.as_deref(),
         &resolver,
     )
     .map_err(|e| format!("{}: {}", path.display(), e))?;

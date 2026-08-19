@@ -412,7 +412,7 @@ format(ts, 'yyyy')                  // ✓ 普通局部拷贝进去，普通值�
 ## M1027 —— 特性超出 config.minLibVersion
 
 可选检查：声明 `config.minLibVersion`（即你在微信管理后台设置的最低基础
-库版本），编译器会把每个有文档最低版本的已用原生特性与它对比：
+库版本）——在 `app.mist` 声明一次即全项目生效，单元可自行覆盖——编译器会把每个有文档最低版本的已用原生特性与它对比：
 
 ```ts
 export const config = { minLibVersion: '2.9.0' }
