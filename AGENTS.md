@@ -16,19 +16,20 @@ and the launch write-up it links.
 
 ## Architecture map
 
-~8.7k lines of Rust (8,669 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
+~9.1k lines of Rust (9,079 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
 (bump in lockstep; span semantics are load-bearing) + `regex`. No serde — JSON is
 hand-emitted.
 
 | Module | Lines | Owns |
 |---|---|---|
-| `src/lib.rs` | ~1411 | Orchestration: `compile_project_dir` (directory → `Layout::Nested`), `compile_project` (entry file → `Layout::Flat`), `compile_rec` (per-unit recursion, inline decisions, store compilation, style merging), `assemble_wxss`, `build_json`. Embeds the runtime via `include_str!("../runtime/mist-rt.js")`. |
-| `src/frontmatter.rs` | ~3291 | The heart. oxc-parses frontmatter TS; `Analysis` (states/deriveds/methods/lifecycles/props/imports/store_imports/config); **span-based rewriting** (never AST codegen): `MutationCollector` (oxc `Visit`) produces precise `Edit`s for writes, `Rewriter` regex-sweeps reads/calls; `emit_js` (Page/Component), `emit_app_js`, `compile_store_module`, `config_literal_to_json`. Also **dead-data elimination** (`StateDecl::bound` — state the template never reads becomes `this._x`, never entering `data`) and `hoisted_deriveds` (generated deriveds for hoisted template expressions). |
+| `src/lib.rs` | ~1461 | Orchestration: `compile_project_dir` (directory → `Layout::Nested`), `compile_project` (entry file → `Layout::Flat`), `compile_rec` (per-unit recursion, inline decisions, store compilation, style merging), `assemble_wxss`, `build_json`. Embeds the runtime via `include_str!("../runtime/mist-rt.js")`. |
+| `src/frontmatter.rs` | ~3419 | The heart. oxc-parses frontmatter TS; `Analysis` (states/deriveds/methods/lifecycles/props/imports/store_imports/config); **span-based rewriting** (never AST codegen): `MutationCollector` (oxc `Visit`) produces precise `Edit`s for writes, `Rewriter` regex-sweeps reads/calls; `emit_js` (Page/Component), `emit_app_js`, `compile_store_module`, `config_literal_to_json`. Also **dead-data elimination** (`StateDecl::bound` — state the template never reads becomes `this._x`, never entering `data`) and `hoisted_deriveds` (generated deriveds for hoisted template expressions). |
 | `src/template.rs` | ~975 | Hand-rolled recursive-descent template parser → `Node` tree (`Element/Text/Expr/For/If`); `.map()`→For, `&&`→If via top-level-aware scanning; `wx:key` validation (M1003); tree queries (`for_lists`, `has_slot`, `has_events`). |
 | `src/wxml.rs` | ~842 | WXML emission: tag mapping (`div`→`view`…, `a href`→`navigator url`), event compilation (`onTap[:catch\|:mut]`, inline arrows → `_eN` handlers + `data-a*`), component vs inline-template use sites, class sanitization routing, **`value:bind`** (→ `model:value` + `__vb_<name>` handler), **`class:list`** (string/`cond && 'x'`/object entries → one class attr with WXML ternaries; exclusive with `class`), **expression hoisting** (page-scope `_h<i>`, per-item `_hl<i>` lists carrying `_c<i>` computed fields). `Handler` is the wxml↔js contract. |
 | `src/tailwind.rs` | ~210 | Class extraction from templates + name sanitization (`w-[32px]`→`w-_32px_`) — must stay byte-identical between markup and CSS selectors. |
 | `src/tailwind_cli.rs` | ~670 | Runs real `@tailwindcss/cli` v4 (npm-installed into `~/.cache/mistc/tw4`, per-invocation `io-<pid>-<counter>` subdirs; post-processed output **memoized per class-set hash** in `css-<hash>/` dirs) and rewrites v4 CSS for WXSS: `@layer` unwrap, `@property`→var substitution, `:root,:host`→`page`, `oklch()`→hex, `color-mix`→`rgba`, media ranges→min/max-width, rem→rpx (1rem=32rpx), allowlist selector filter, `page{}` theme split. |
 | `src/sfc.rs` | ~51 | Splits `---` frontmatter / template / `<style>`; parses `<style scoped>`; records 1-based line offsets so diagnostics report real file positions. |
+| `src/npm_bundle.rs` | ~120 | Bare npm imports (SPEC §12 boundary rule): esbuild installed once into `~/.cache/mistc/esbuild` (same pattern as Tailwind), bundles each imported package from the project's own `node_modules` (NODE_PATH resolution, stub `module.exports = require(pkg)`, `--format=cjs --platform=browser`) into self-contained `dist/vendor/<stem>.js`, memoized per package version. `vendor_stem` (@scope/pkg → scope__pkg), `package_root` (subpath → owning package), `valid_package_name`. Project builds only. |
 | `src/scope.rs` | ~237 | `<style scoped>`: per-unit class suffixing (`.card`→`.card--<name>`) applied identically to WXSS selectors (comments stripped first; recursing into `@media`/`@supports`, skipping `@keyframes`) and to markup `class`/`hover-class`/`placeholder-class` values (space-anchored attr match) incl. quoted literals inside WXML ternaries; `scope_class_expr` rewrites literals (incl. template-literal text) in hoisted class expressions (`WxmlOutput::class_hoists`) before `hoisted_deriveds` bakes them into JS. Class names built inside frontmatter functions are not rewritten (documented limit). |
 | `src/tag_meta.rs` | ~429 | Hand-curated per-tag metadata for ~25 everyday native components (miniprogram-api-typings has no per-component attribute tables, so generation is impossible): `TagMeta { tag, attrs, events }`, `COMMON_EVENTS` (camelCase, matched lowercase so M1023 suggestions read as `onScrollToLower`), `UNIVERSAL_ATTRS`, `meta_for`/`valid_*`/`suggest_*` (Levenshtein ≤2). Absent tags skip validation — staleness never breaks builds. Shared surface for the compiler warnings and the LSP's template completions (tags/attributes/events). |
 | `src/main.rs` | ~539 | clap CLI: `mistc build <dir\|file> [-o out] [--app] [--watch]` (notify-based watcher, 120ms debounce, output dir excluded), `mistc init <name>` (scaffolds src/app.mist + todo page + sample test + project.config.json), and `mistc test [dir] [--filter s] [--timeout secs] [--watch]` (compiles src/ to a temp dir, runs tests/*.test.js via node with the embedded `runtime/mist-test.js` harness — per-file timeout kills hung tests, default 30s — exits non-zero on failure); writes the dist tree, records it in `dist/.mist-manifest` and prunes stale outputs; prints warnings. |
@@ -194,7 +195,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    instead when that's statically extractable via
    `frontmatter::config_tab_bar_page_paths`; flat/single-file builds compile
    `navigate()` calls with no route-list check at all — no route set exists).
-   M1001–M1025 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`).
+   M1001–M1026 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs).
    Frontmatter TS is type-stripped (`strip_types`, whitespace-
    preserving blanking) before analysis, so annotations never reach emitted JS.
    `tests/diagnostics.rs` asserts on message substrings — reformatting breaks it.
@@ -249,7 +250,7 @@ rebinds cancel, covers for-of and iterator-callback params).
 hoisting (§8.4 — distinct from §4.2 expression hoisting, which ships);
 `mist.config.ts` as a file; `<style global>`
 (`<style scoped>` ships — per-unit `--<name>` suffixing in `src/scope.rs`);
-`mist trace`; package-size budgets; npm interop;
+`mist trace`; package-size budgets;
 snapshot testing; hoisting inside nested loops.
 
 `navigate()` **is implemented** (plan 026): `import { navigate } from 'mist'`

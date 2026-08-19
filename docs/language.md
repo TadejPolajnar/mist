@@ -659,11 +659,46 @@ One `[param].mist` per directory; `pages/item.mist` alongside
 subpackages too (`packages/<pkg>/pages/<dir>/[id].mist`). See
 examples/portfolio's position page.
 
+## npm imports — `import dayjs from 'dayjs'`
+
+Bare npm imports work in pages and components (not in store modules yet).
+`npm install` your dependency in the project root; the compiler bundles each
+imported package into a self-contained `dist/vendor/<pkg>.js` via esbuild
+(installed once into `~/.cache/mistc/`, like Tailwind) and emits plain
+`require`s. Default, named and subpath imports are supported; `* as`
+namespace imports are not.
+
+The catch is deliberate — **npm code is an opaque boundary**. The compiler's
+whole thesis is tracking every mutation of reactive state; it cannot see
+inside a bundled library. So passing a reactive value (state, derived, or
+store mirror) as an argument to an imported function is a compile error
+(**M1026**). Copy what the function needs into a plain local first:
+
+```ts
+import { format } from 'date-fns'
+
+const when = state({ ts: 0 })
+const label = state('')
+
+function f() {
+  format(when.value, 'yyyy')       // ✗ M1026 — reactive object crosses the boundary
+  const ts = when.value.ts
+  label.value = format(ts, 'yyyy') // ✓ primitive copy in, plain return value out
+}
+```
+
+Return values are plain data — assigning them to state is fine. The check
+covers direct calls (including member calls like `dayjs.utc(...)`); routing
+a reactive value through an alias or callback is the same untracked frontier
+M1001 documents. Bundling runs in project builds only — single-file builds
+emit the `require` but no vendor file. The compiler does not yet detect
+packages that need DOM or Node APIs — those bundle successfully and fail at
+runtime in WeChat's JS context; stick to pure computation libraries.
+
 ## Not yet (roadmap — these error cleanly today)
 
 Calls in nested loops (M1009),
-npm imports in frontmatter (rejected with an error — only
-`mist`, store modules and `.mist` components import). Tab bar/window config:
+npm imports inside store modules. Tab bar/window config:
 put `tabBar` in `app.mist`'s `config` — no separate config file needed.
 
 TypeScript annotations (param/return types, `interface`, `type`, `as`,

@@ -1,4 +1,5 @@
 pub mod frontmatter;
+pub mod npm_bundle;
 pub mod scope;
 pub mod tag_meta;
 pub mod sfc;
@@ -32,6 +33,8 @@ pub struct Unit {
     pub style: String,
     /// relative paths of imported store modules
     pub store_import_paths: Vec<String>,
+    /// bare npm packages imported by this unit (bundled in project builds)
+    pub npm_packages: Vec<String>,
     pub warnings: Vec<String>,
     /// `navigate(...)` call sites with literal routes — validated against the
     /// project route set once it exists (M1021); always empty for flat/single-unit
@@ -97,6 +100,13 @@ impl Layout {
     /// output path (no extension) of a subpackage page — `packages/<pkg>/pages/<name>/<name>`
     fn subpkg_out_path(pkg: &str, name: &str) -> String {
         format!("packages/{}/pages/{}/{}", pkg, name, name)
+    }
+    /// require path from a page/component to a bundled npm vendor file
+    fn vendor_require(&self, stem: &str, depth: usize) -> String {
+        match self {
+            Layout::Flat => format!("./{}.js", stem),
+            Layout::Nested => format!("{}vendor/{}.js", Self::up(depth), stem),
+        }
     }
     /// require path from a page/component to a compiled store module
     fn store_require(&self, stem: &str, depth: usize) -> String {
@@ -190,6 +200,9 @@ fn compile_unit_full_route(
     for si in &mut analysis.store_imports {
         let stem = Path::new(&si.path).file_stem().unwrap_or_default().to_string_lossy().to_string();
         si.require_path = layout.store_require(&stem, depth);
+    }
+    for ni in &mut analysis.npm_imports {
+        ni.require_path = layout.vendor_require(&npm_bundle::vendor_stem(&ni.package), depth);
     }
 
     let mut reactive: Vec<String> = analysis.states.iter().map(|s| s.name.clone()).collect();
@@ -498,6 +511,8 @@ fn compile_unit_full_route(
 
     let store_import_paths: Vec<String> =
         analysis.store_imports.iter().map(|si| si.path.clone()).collect();
+    let npm_packages: Vec<String> =
+        analysis.npm_imports.iter().map(|ni| ni.package.clone()).collect();
 
     Ok(Unit {
         output: Output { wxml, js, wxss, json },
@@ -506,6 +521,7 @@ fn compile_unit_full_route(
         classes,
         style,
         store_import_paths,
+        npm_packages,
         warnings,
         route_refs: analysis.route_refs,
     })
@@ -538,6 +554,7 @@ fn compile_template_unit(source: &str, name: &str) -> Result<Unit, String> {
         classes,
         style,
         store_import_paths: Vec::new(),
+        npm_packages: Vec::new(),
         warnings: Vec::new(),
         route_refs: Vec::new(),
     })
@@ -754,6 +771,28 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
         }
     }
 
+    let npm_packages: Vec<String> = ctx.npm_packages.iter().cloned().collect();
+    if !npm_packages.is_empty() {
+        let parent = src.parent().unwrap_or(src);
+        let project_root = if parent.join("node_modules").exists() {
+            parent.to_path_buf()
+        } else {
+            src.to_path_buf()
+        };
+        for pkg in &npm_packages {
+            let js = npm_bundle::bundle_package(&project_root, pkg)?;
+            ctx.files.push(CompiledFile {
+                name: npm_bundle::vendor_stem(pkg),
+                out_path: format!("vendor/{}", npm_bundle::vendor_stem(pkg)),
+                is_page: false,
+                package: None,
+                output: Output { wxml: String::new(), js, wxss: String::new(), json: None },
+                route_refs: Vec::new(),
+                route_param: None,
+            });
+        }
+    }
+
     let custom_tab_bar_path = src.join("custom-tab-bar.mist");
     let custom_tab_bar_exists = custom_tab_bar_path.is_file();
     if custom_tab_bar_exists {
@@ -892,6 +931,7 @@ fn warn_dropped_mist_subdirs(pages_entries: &[PathBuf], label: &str, ctx: &mut P
 
 fn new_project_ctx(layout: Layout) -> ProjectCtx {
     ProjectCtx {
+        npm_packages: std::collections::BTreeSet::new(),
         seen: Vec::new(),
         files: Vec::new(),
         classes: Vec::new(),
@@ -912,6 +952,12 @@ fn compile_app(
 ) -> Result<AppShell, String> {
     let sfc = sfc::split(source).map_err(|e| format!("app.mist: {}", e))?;
     let analysis = frontmatter::analyze(sfc.frontmatter).map_err(|e| format!("app.mist: {}", e))?;
+    if let Some(ni) = analysis.npm_imports.first() {
+        return Err(format!(
+            "app.mist: cannot import '{}' — npm imports work in pages and components, not the app shell",
+            ni.package
+        ));
+    }
     const APP_HOOKS: &[&str] = &[
         "onLaunch", "onShow", "onHide", "onError", "onPageNotFound", "onUnhandledRejection",
         "onThemeChange",
@@ -1161,6 +1207,7 @@ enum UnitKind {
 }
 
 struct ProjectCtx {
+    npm_packages: std::collections::BTreeSet<String>,
     seen: Vec<PathBuf>,
     files: Vec<CompiledFile>,
     classes: Vec<String>,
@@ -1271,6 +1318,7 @@ fn compile_rec_at(
     ctx.classes.extend(unit.classes.iter().cloned());
     ctx.style_defined_classes.extend(tailwind::harvest_style_classes(&unit.style));
     ctx.warnings.extend(unit.warnings.iter().map(|w| format!("{}: {}", path.display(), w)));
+    ctx.npm_packages.extend(unit.npm_packages.iter().cloned());
 
     // compile imported store modules (deduped across the project)
     for store_path in &unit.store_import_paths {

@@ -44,7 +44,8 @@ mistc --version
 
 Or from source: `cargo install --path .` in a clone of this repo (Rust 2021).
 Either way you also need **Node.js + npm** on PATH (Tailwind runs through the
-real `@tailwindcss/cli`) and **WeChat DevTools** to run the output.
+real `@tailwindcss/cli`; npm imports bundle through esbuild) and **WeChat
+DevTools** to run the output.
 
 ```sh
 mistc init my-app            # scaffold: app.mist + a todo page + DevTools config
@@ -221,7 +222,7 @@ The emitted JS is deliberately readable (WeChat DevTools can't load source maps)
 
 ## Status
 
-Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), native-tag attribute/event validation (M1023/M1024), `[id].mist` route-param pages, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis. Still design-only: npm imports. See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
+Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), native-tag attribute/event validation (M1023/M1024), `[id].mist` route-param pages, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis, and npm imports with a compiler-enforced opaque boundary (M1026 + esbuild vendor bundling). See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
 
 ## Roadmap
 

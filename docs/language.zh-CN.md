@@ -514,8 +514,41 @@ onShow(() => {
 （`packages/<pkg>/pages/<dir>/[id].mist`）。见 examples/portfolio 的持仓
 详情页。
 
+## npm 导入——`import dayjs from 'dayjs'`
+
+页面和组件中可以使用裸 npm 导入（store 模块暂不支持）。在项目根目录
+`npm install` 依赖；编译器用 esbuild（像 Tailwind 一样一次性安装到
+`~/.cache/mistc/`）把每个导入的包打包为自包含的
+`dist/vendor/<pkg>.js`，并生成普通的 `require`。支持默认、具名和子路径
+导入；不支持 `* as` 命名空间导入。
+
+这里有一个刻意的限制——**npm 代码是不透明边界**。编译器的整个论点是
+追踪响应式状态的每一次变更；它无法看进打包后的库。因此把响应式值
+（state、derived 或 store 镜像）作为参数传给导入的函数是编译错误
+（**M1026**）。先把函数需要的内容拷贝到普通局部变量：
+
+```ts
+import { format } from 'date-fns'
+
+const when = state({ ts: 0 })
+const label = state('')
+
+function f() {
+  format(when.value, 'yyyy')       // ✗ M1026 —— 响应式对象越过了边界
+  const ts = when.value.ts
+  label.value = format(ts, 'yyyy') // ✓ 原始值拷贝进去，普通返回值出来
+}
+```
+
+返回值是普通数据——赋给 state 没有问题。检查覆盖直接调用（包括
+`dayjs.utc(...)` 这样的成员调用）；通过别名或回调转交响应式值属于
+M1001 记录的同一类不可追踪边界。打包只在项目构建中进行——单文件构建
+会生成 `require` 但不产出 vendor 文件。编译器暂不检测依赖 DOM 或 Node
+API 的包——它们能打包成功但会在微信 JS 环境中运行时报错；请只使用纯
+计算类库。
+
 ## 尚未支持（路线图——这些功能今天会给出明确的错误）
 
-嵌套循环内的调用（M1009）、frontmatter 中的 npm 导入（报错拒绝——只能导入 `mist`、store 模块和 `.mist` 组件）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
+嵌套循环内的调用（M1009）、store 模块内的 npm 导入。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
 
 TypeScript 注解（参数/返回类型、`interface`、`type`、`as`、泛型、`import type`）在生成前被剥离——放心添加注解；它们都不会进入生成的 JS。`enum` 是例外：它是运行时构造，会被拒绝并附带修复提示（请使用 const 对象或字符串字面量联合类型）。

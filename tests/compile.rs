@@ -1251,3 +1251,31 @@ fn unscoped_style_stays_verbatim() {
     assert!(out.wxss.contains(".card {"), "wxss:\n{}", out.wxss);
     assert!(out.wxml.contains("class=\"card\""), "wxml:\n{}", out.wxml);
 }
+
+#[test]
+fn m1026_catches_member_callee_and_store_mirrors() {
+    let src = "---\nimport { state } from 'mist'\nimport dayjs from 'dayjs'\nconst when = state({ ts: 0 })\nfunction f() {\n  return dayjs.utc(when.value)\n}\n---\n<span>{f()}</span>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("M1026") && err.contains("'dayjs'"), "err: {}", err);
+
+    let src = "---\nimport { validate } from 'checker'\nimport { cart } from './stores/cart.ts'\nfunction f() {\n  return validate(cart.value)\n}\n---\n<span onTap={f}>x</span>\n";
+    let resolver = |_: &str| {
+        Some(mistc::frontmatter::StoreModuleInfo {
+            stores: vec!["cart".to_string()],
+            fns: vec![],
+        })
+    };
+    let err = match mistc::compile_unit_with_stores(src, true, &resolver) {
+        Err(e) => e,
+        Ok(_) => panic!("store mirror into npm import must be M1026"),
+    };
+    assert!(err.contains("M1026") && err.contains("'cart'"), "err: {}", err);
+}
+
+#[test]
+fn npm_imports_allow_primitives_locals_and_returns() {
+    let src = "---\nimport { state } from 'mist'\nimport { format } from 'datefmt'\nconst when = state({ ts: 5 })\nconst label = state('')\nfunction f() {\n  const ts = when.value.ts\n  label.value = format(ts, 'YYYY')\n}\n---\n<span onTap={f}>{label.value}</span>\n";
+    let out = mistc::compile(src).expect("local-copy pattern must compile");
+    assert!(out.js.contains("const { format } = require('./datefmt.js');"), "js:\n{}", out.js);
+    assert!(out.js.contains("this.__set('label', format(ts, 'YYYY'))"), "js:\n{}", out.js);
+}

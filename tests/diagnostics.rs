@@ -139,11 +139,10 @@ fn m1001_fires_for_unbound_state_aliases() {
 }
 
 #[test]
-fn npm_imports_are_rejected() {
-    let src = "---\nimport { state } from 'mist'\nimport dayjs from 'dayjs'\nconst n = state(0)\n---\n<span>{n.value}</span>\n";
-    let err = mistc::compile(src).unwrap_err();
-    assert!(err.contains("npm packages are not supported"), "err: {}", err);
-    assert!(err.contains("dayjs"), "err: {}", err);
+fn npm_default_import_emits_vendor_require() {
+    let src = "---\nimport { state } from 'mist'\nimport dayjs from 'dayjs'\nconst n = state(0)\nfunction stamp() {\n  n.value = dayjs('2026-01-01').valueOf()\n}\n---\n<span onTap={stamp}>{n.value}</span>\n";
+    let out = mistc::compile(src).expect("npm imports must compile");
+    assert!(out.js.contains("const dayjs = __npmi(require('./dayjs.js'));"), "js:\n{}", out.js);
 }
 
 #[test]
@@ -161,13 +160,18 @@ fn m1015_empty_plugin_name_errors() {
 }
 
 #[test]
-fn npm_imports_are_still_rejected_with_original_message() {
-    let src = "---\nimport { state } from 'mist'\nimport dayjs from 'dayjs'\nconst n = state(0)\n---\n<span>{n.value}</span>\n";
+fn m1026_catches_spread_arguments() {
+    let src = "---\nimport { state } from 'mist'\nimport { pick } from 'toolkit'\nconst items = state([1, 2])\nfunction f() {\n  return pick(...items.value)\n}\n---\n<span>{f()}</span>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("M1026") && err.contains("'items'"), "err: {}", err);
+}
+
+#[test]
+fn m1026_reactive_value_into_npm_import_errors() {
+    let src = "---\nimport { state } from 'mist'\nimport dayjs from 'dayjs'\nconst when = state({ ts: 0 })\nfunction fmt() {\n  return dayjs(when.value)\n}\n---\n<span>{fmt()}</span>\n";
     let err = mistc::compile(src).unwrap_err();
     assert!(
-        err.contains(
-            "cannot import 'dayjs' — npm packages are not supported; only 'mist', relative store modules and .mist components can be imported"
-        ),
+        err.contains("M1026") && err.contains("'when'") && err.contains("'dayjs'"),
         "err: {}",
         err
     );
@@ -311,15 +315,18 @@ fn m1001_alias_detected_despite_same_name_param_elsewhere() {
 }
 
 #[test]
-fn npm_scoped_and_subpath_imports_rejected() {
-    for spec in ["@tarojs/taro", "mist/helpers"] {
+fn npm_scoped_and_subpath_imports_compile_but_mist_subpaths_do_not() {
+    for spec in ["@scope/pkg", "dayjs/plugin/utc"] {
         let src = format!(
-            "---\nimport {{ state }} from 'mist'\nimport x from '{}'\nconst n = state(0)\n---\n<span>{{n.value}}</span>\n",
+            "---\nimport {{ state }} from 'mist'\nimport x from '{}'\nconst n = state(0)\nfunction f() {{ n.value = x(1) }}\n---\n<span onTap={{f}}>{{n.value}}</span>\n",
             spec
         );
-        let err = mistc::compile(&src).unwrap_err();
-        assert!(err.contains("npm packages are not supported"), "{}: err: {}", spec, err);
+        let out = mistc::compile(&src).unwrap_or_else(|e| panic!("{}: {}", spec, e));
+        assert!(out.js.contains("require('./"), "{}: js:\n{}", spec, out.js);
     }
+    let src = "---\nimport { state } from 'mist'\nimport x from 'mist/helpers'\nconst n = state(0)\n---\n<span>{n.value}</span>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("no subpaths"), "err: {}", err);
 }
 
 #[test]

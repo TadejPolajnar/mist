@@ -1077,3 +1077,74 @@ fn route_param_page_collides_with_flat_page() {
     let err = mistc::compile_project_dir(&dir).unwrap_err();
     assert!(err.contains("both compile to"), "err: {}", err);
 }
+
+#[test]
+fn npm_imports_rejected_in_app_mist() {
+    let dir = std::env::temp_dir().join("mist-npm-app-reject");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport dayjs from 'dayjs'\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("app.mist") && err.contains("npm imports work in pages"), "err: {}", err);
+}
+
+#[test]
+fn npm_vendor_require_path_is_depth_aware_for_subpackages() {
+    let dir = std::env::temp_dir().join("mist-npm-subpkg");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("packages/shop/pages")).unwrap();
+    std::fs::create_dir_all(dir.join("../mist-npm-subpkg-root")).ok();
+    std::fs::create_dir_all(dir.join("node_modules/greeting")).unwrap();
+    std::fs::write(
+        dir.join("node_modules/greeting/package.json"),
+        "{ \"name\": \"greeting\", \"version\": \"2.0.0\", \"main\": \"index.js\" }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("node_modules/greeting/index.js"),
+        "module.exports = function greet(n) { return 'yo ' + n; };\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("packages/shop/pages/cart.mist"),
+        "---\nimport { state } from 'mist'\nimport greet from 'greeting'\nconst msg = state('')\nfunction f() {\n  msg.value = greet('x')\n}\n---\n<span onTap={f}>{msg.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    if std::process::Command::new("npm").arg("--version").output().is_err() {
+        eprintln!("skipping: npm not available");
+        return;
+    }
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    let cart = p
+        .files
+        .iter()
+        .find(|f| f.out_path == "packages/shop/pages/cart/cart")
+        .expect("subpackage page missing");
+    assert!(
+        cart.output.js.contains("require('../../../../vendor/greeting.js')"),
+        "js:\n{}",
+        cart.output.js
+    );
+    let vendor = p.files.iter().find(|f| f.out_path == "vendor/greeting").expect("vendor missing");
+    assert!(vendor.output.js.contains("yo "), "vendor:\n{}", vendor.output.js);
+}

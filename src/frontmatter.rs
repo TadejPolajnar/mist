@@ -10,6 +10,14 @@ use regex::Regex;
 use crate::template;
 use crate::wxml::Handler;
 
+pub struct NpmImport {
+    pub package: String,
+    pub default_local: Option<String>,
+    /// (imported name, local name)
+    pub named: Vec<(String, String)>,
+    pub require_path: String,
+}
+
 pub struct Analysis {
     pub states: Vec<StateDecl>,
     pub deriveds: Vec<DerivedDecl>,
@@ -30,6 +38,8 @@ pub struct Analysis {
     pub custom_tags: Vec<String>,
     /// `config.customAttrs` — attr/event names that suppress M1023/M1024
     pub custom_attrs: Vec<String>,
+    /// bare npm imports (SPEC §12 boundary rule) — bundled to `vendor/` in project builds
+    pub npm_imports: Vec<NpmImport>,
     /// `config.virtualHost` — component-only; removes the wrapper node
     pub virtual_host: Option<bool>,
     /// `config.pureDataPattern` — component-only; regex source (validated, no `/`)
@@ -512,6 +522,7 @@ pub fn analyze_with_stores_bound(
     let mut callback_props: Vec<String> = Vec::new();
     let mut store_imports: Vec<StoreImport> = Vec::new();
     let mut plugin_imports: Vec<PluginImport> = Vec::new();
+    let mut npm_imports: Vec<NpmImport> = Vec::new();
 
     for stmt in &program.body {
         match stmt {
@@ -597,10 +608,53 @@ pub fn analyze_with_stores_bound(
                         require_path: String::new(),
                     });
                 } else if path != "mist" {
-                    return Err(format!(
-                        "cannot import '{}' — npm packages are not supported; only 'mist', relative store modules and .mist components can be imported",
-                        path
-                    ));
+                    if path.starts_with("mist/") {
+                        return Err(format!(
+                            "cannot import '{}' — the 'mist' module has no subpaths; import from 'mist' directly",
+                            path
+                        ));
+                    }
+                    if !crate::npm_bundle::valid_package_name(&path) {
+                        return Err(format!(
+                            "cannot import '{}' — not a valid npm package name",
+                            path
+                        ));
+                    }
+                    let mut default_local = None;
+                    let mut named = Vec::new();
+                    if let Some(specs) = import.specifiers.as_ref() {
+                        for spec in specs.iter() {
+                            match spec {
+                                ImportDeclarationSpecifier::ImportDefaultSpecifier(d) => {
+                                    default_local = Some(d.local.name.to_string());
+                                }
+                                ImportDeclarationSpecifier::ImportSpecifier(named_spec) => {
+                                    named.push((
+                                        named_spec.imported.name().to_string(),
+                                        named_spec.local.name.to_string(),
+                                    ));
+                                }
+                                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                                    return Err(format!(
+                                        "npm import '{}': namespace imports (`* as`) are not supported — use default or named imports",
+                                        path
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    if default_local.is_none() && named.is_empty() {
+                        return Err(format!(
+                            "npm import '{}' needs a default or named import — side-effect-only imports are not supported",
+                            path
+                        ));
+                    }
+                    npm_imports.push(NpmImport {
+                        package: path,
+                        default_local,
+                        named,
+                        require_path: String::new(),
+                    });
                 } else if let Some(specs) = import.specifiers.as_ref() {
                     check_mist_specifiers(src, specs, line_offset)?;
                 }
@@ -924,7 +978,7 @@ pub fn analyze_with_stores_bound(
         })
         .collect();
 
-    let deriveds = deriveds
+    let deriveds: Vec<DerivedDecl> = deriveds
         .into_iter()
         .map(|(name, span)| DerivedDecl { arrow: rewriter.transform(src, span, &edits), name })
         .collect();
@@ -984,6 +1038,40 @@ pub fn analyze_with_stores_bound(
         None => ComponentOptions::default(),
     };
 
+    if !npm_imports.is_empty() {
+        let mut npm_locals = std::collections::HashSet::new();
+        for ni in &npm_imports {
+            if let Some(d) = &ni.default_local {
+                npm_locals.insert(d.clone());
+            }
+            for (_, local) in &ni.named {
+                npm_locals.insert(local.clone());
+            }
+        }
+        let mut reactive = std::collections::HashSet::new();
+        for st in &states {
+            reactive.insert(st.name.clone());
+        }
+        for d in &deriveds {
+            reactive.insert(d.name.clone());
+        }
+        for si in &store_imports {
+            for name in &si.stores {
+                reactive.insert(name.clone());
+            }
+        }
+        let mut check = NpmBoundaryCheck { npm_locals: &npm_locals, reactive: &reactive, hit: None };
+        check.visit_program(&program);
+        if let Some((offset, callee, name)) = check.hit {
+            let (line, col) = line_col(src, offset, line_offset);
+            return Err(format!(
+                "M1026 at line {}:{}: reactive value '{}' passed to npm import '{}' — npm code is an opaque boundary the compiler cannot track mutations through
+  help: copy what the function needs into a plain local first (const v = {n}.value.field) and pass that",
+                line, col, name, callee, n = name
+            ));
+        }
+    }
+
     Ok(Analysis {
         states,
         deriveds,
@@ -1002,6 +1090,7 @@ pub fn analyze_with_stores_bound(
         plugin_components,
         custom_tags,
         custom_attrs,
+        npm_imports,
         virtual_host: component_options.virtual_host,
         pure_data_pattern: component_options.pure_data_pattern,
         external_classes: component_options.external_classes,
@@ -1607,6 +1696,34 @@ pub fn emit_js_route(
     }
     for pi in &analysis.plugin_imports {
         out.push_str(&format!("const {} = requirePlugin('{}');\n", pi.local, pi.plugin));
+    }
+    if analysis.npm_imports.iter().any(|ni| ni.default_local.is_some()) {
+        out.push_str(
+            "function __npmi(m) { return m && m.__esModule && m.default !== undefined ? m.default : m; }\n",
+        );
+    }
+    for ni in &analysis.npm_imports {
+        if let Some(local) = &ni.default_local {
+            out.push_str(&format!("const {} = __npmi(require('{}'));\n", local, ni.require_path));
+        }
+        if !ni.named.is_empty() {
+            let bindings: Vec<String> = ni
+                .named
+                .iter()
+                .map(|(imported, local)| {
+                    if imported == local {
+                        local.clone()
+                    } else {
+                        format!("{}: {}", imported, local)
+                    }
+                })
+                .collect();
+            out.push_str(&format!(
+                "const {{ {} }} = require('{}');\n",
+                bindings.join(", "),
+                ni.require_path
+            ));
+        }
     }
     for stmt in &analysis.plain_stmts {
         out.push_str(stmt);
@@ -3094,6 +3211,65 @@ fn path_expr(root: &str, rest: &str) -> String {
 
 fn read_expr(root: &str, rest: &str) -> String {
     format!("this.data.{}{}", root, rest)
+}
+
+fn callee_root_name(expr: &Expression) -> Option<String> {
+    match expr {
+        Expression::Identifier(id) => Some(id.name.to_string()),
+        Expression::StaticMemberExpression(m) => callee_root_name(&m.object),
+        Expression::ComputedMemberExpression(m) => callee_root_name(&m.object),
+        Expression::CallExpression(c) => callee_root_name(&c.callee),
+        Expression::ParenthesizedExpression(pe) => callee_root_name(&pe.expression),
+        _ => None,
+    }
+}
+
+struct ReactiveFinder<'r> {
+    reactive: &'r std::collections::HashSet<String>,
+    found: Option<String>,
+}
+
+impl<'a> Visit<'a> for ReactiveFinder<'_> {
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        if self.found.is_none() && self.reactive.contains(it.name.as_str()) {
+            self.found = Some(it.name.to_string());
+        }
+    }
+}
+
+struct NpmBoundaryCheck<'r> {
+    npm_locals: &'r std::collections::HashSet<String>,
+    reactive: &'r std::collections::HashSet<String>,
+    hit: Option<(usize, String, String)>,
+}
+
+impl<'a> Visit<'a> for NpmBoundaryCheck<'_> {
+    fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        if self.hit.is_none() {
+            if let Some(root) = callee_root_name(&it.callee) {
+                if self.npm_locals.contains(&root) {
+                    for arg in &it.arguments {
+                        let mut finder = ReactiveFinder { reactive: self.reactive, found: None };
+                        match arg {
+                            Argument::SpreadElement(spread) => {
+                                finder.visit_expression(&spread.argument);
+                            }
+                            _ => {
+                                if let Some(expr) = arg.as_expression() {
+                                    finder.visit_expression(expr);
+                                }
+                            }
+                        }
+                        if let Some(name) = finder.found {
+                            self.hit = Some((it.span.start as usize, root, name));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        walk::walk_call_expression(self, it);
+    }
 }
 
 impl<'a> Visit<'a> for MutationCollector<'_> {

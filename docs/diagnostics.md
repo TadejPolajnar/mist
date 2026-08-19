@@ -407,3 +407,24 @@ const id = state('')          // ✓ seeded from the query before onLoad runs
 Without it the page has nowhere to put the param — M1025, with the exact
 declaration to add. Query params are strings; convert in a `derived` if you
 need a number.
+
+## M1026 — reactive value passed to an npm import
+
+npm imports are supported, but they are an **opaque boundary**: the compiler
+bundles the library and cannot see inside it, so a reactive value (state,
+derived, or store mirror) passed as an argument could be mutated invisibly —
+exactly the silent-staleness class the compiler exists to prevent.
+
+```ts
+import { format } from 'date-fns'
+const when = state({ ts: 0 })
+
+format(when.value, 'yyyy')          // ✗ M1026 — reactive object crosses the boundary
+const ts = when.value.ts
+format(ts, 'yyyy')                  // ✓ plain local copy in, plain value out
+```
+
+Return values are ordinary data — assign them to state freely. The check
+covers direct calls, including member calls (`dayjs.utc(...)`); routing a
+reactive value through an alias or callback is the same untracked frontier
+M1001 documents.

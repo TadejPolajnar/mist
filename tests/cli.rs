@@ -456,3 +456,56 @@ fn routes_dts_not_rewritten_when_unchanged() {
     let mtime2 = std::fs::metadata(&routes_dts_path).unwrap().modified().unwrap();
     assert_eq!(mtime1, mtime2, "unchanged route set must not rewrite the file");
 }
+
+#[test]
+fn npm_import_bundles_and_runs_end_to_end() {
+    if !node_available() {
+        eprintln!("skipping: node not available");
+        return;
+    }
+    let dir = std::env::temp_dir().join("mist-cli-npm-bundle");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src/pages")).unwrap();
+    std::fs::create_dir_all(dir.join("tests")).unwrap();
+    std::fs::create_dir_all(dir.join("node_modules/greeting")).unwrap();
+    std::fs::write(
+        dir.join("node_modules/greeting/package.json"),
+        "{ \"name\": \"greeting\", \"version\": \"1.0.1\", \"main\": \"index.js\" }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("node_modules/greeting/index.js"),
+        "function greet(name) { return 'hi ' + name; }\ngreet.shout = function (name) { return ('hi ' + name).toUpperCase(); };\nmodule.exports = greet;\nmodule.exports.shout = greet.shout;\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("src/app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("src/pages/index.mist"),
+        "---\nimport { state } from 'mist'\nimport greet from 'greeting'\nimport { shout } from 'greeting'\nconst msg = state('')\nfunction hello() {\n  msg.value = greet('mist') + '/' + shout('mist')\n}\n---\n<span onTap={hello}>{msg.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("tests/greet.test.js"),
+        "const assert = require('node:assert');\nmodule.exports = async () => {\n  const app = bootPage('index');\n  app.page.hello();\n  await flush();\n  assert.equal(app.data().msg, 'hi mist/HI MIST');\n};\n",
+    )
+    .unwrap();
+    let out = Command::new(bin()).args(["build", "src", "-o", "dist"]).current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "build failed: {}", String::from_utf8_lossy(&out.stderr));
+    let vendor = std::fs::read_to_string(dir.join("dist/vendor/greeting.js")).expect("vendor bundle missing");
+    assert!(vendor.contains("hi "), "vendor:\n{}", vendor);
+    let page = std::fs::read_to_string(dir.join("dist/pages/index/index.js")).unwrap();
+    assert!(page.contains("require('../../vendor/greeting.js')"), "page:\n{}", page);
+
+    let out = Command::new(bin()).arg("test").current_dir(&dir).output().unwrap();
+    assert!(
+        out.status.success(),
+        "mistc test failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 passed, 0 failed"));
+}

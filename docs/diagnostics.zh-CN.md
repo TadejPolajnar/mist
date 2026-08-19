@@ -389,3 +389,22 @@ const id = state('')          // ✓ 在 onLoad 运行前从查询参数注入
 
 没有它，参数无处存放——报 M1025，并附上要添加的确切声明。查询参数是
 字符串；需要数字时在 `derived` 里转换。
+
+## M1026 —— 响应式值被传给 npm 导入
+
+npm 导入是受支持的，但它是**不透明边界**：编译器把库打包进来却无法看进
+它的内部，因此作为参数传入的响应式值（state、derived 或 store 镜像）
+可能被不可见地变更——这正是编译器要消灭的那类静默过期问题。
+
+```ts
+import { format } from 'date-fns'
+const when = state({ ts: 0 })
+
+format(when.value, 'yyyy')          // ✗ M1026 —— 响应式对象越过了边界
+const ts = when.value.ts
+format(ts, 'yyyy')                  // ✓ 普通局部拷贝进去，普通值出来
+```
+
+返回值是普通数据——随意赋给 state。检查覆盖直接调用，包括成员调用
+（`dayjs.utc(...)`）；通过别名或回调转交响应式值属于 M1001 记录的同一类
+不可追踪边界。
