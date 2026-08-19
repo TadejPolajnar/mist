@@ -1,0 +1,51 @@
+name: vscode-release
+
+on:
+  push:
+    tags:
+      - "vscode-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    environment: release
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Gate tag against package.json version
+        run: |
+          TAG="${GITHUB_REF_NAME#vscode-v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "tag vscode-v$TAG != package.json $PKG" >&2
+            exit 1
+          fi
+      - run: npm ci
+      - name: Package
+        run: npx --yes @vscode/vsce@3.9.2 package -o "mist-lang-${GITHUB_REF_NAME#vscode-v}.vsix"
+      - name: Publish to VS Code Marketplace
+        run: npx --yes @vscode/vsce@3.9.2 publish --packagePath "mist-lang-${GITHUB_REF_NAME#vscode-v}.vsix"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to OpenVSX
+        continue-on-error: true
+        run: npx --yes ovsx@1.1.1 publish "mist-lang-${GITHUB_REF_NAME#vscode-v}.vsix"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - name: Attach .vsix to GitHub release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" mist-lang-*.vsix
+          else
+            gh release create "$GITHUB_REF_NAME" mist-lang-*.vsix --title "$GITHUB_REF_NAME" --notes "Mist VS Code extension ${GITHUB_REF_NAME#vscode-v}"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

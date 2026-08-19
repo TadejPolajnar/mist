@@ -2,6 +2,8 @@
 dist/
 npm/*/bin/mistc
 npm/*/bin/mistc.exe
+npm/*/bin/mistc-lsp
+npm/*/bin/mistc-lsp.exe
 *.vsix
 editors/vscode/node_modules/
 BLOG.md

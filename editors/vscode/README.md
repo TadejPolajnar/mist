@@ -4,6 +4,25 @@ Syntax highlighting and language server integration for `.mist` single-file
 components: TypeScript frontmatter between `---` fences, JSX-ish template, and
 embedded `<style>` CSS.
 
+## Install
+
+Search for **Mist** (`tadejpolajnar.mist-lang`) in the VS Code Marketplace, or:
+
+```sh
+code --install-extension tadejpolajnar.mist-lang
+```
+
+For the full language server (diagnostics, completions, rename), also install
+the compiler so `mistc-lsp` is on your PATH:
+
+```sh
+npm install -g mist-lang        # ships mistc and mistc-lsp (v0.3.0+)
+```
+
+(On older releases without a bundled `mistc-lsp`, build it from a repo clone:
+`cargo install --path crates/mistc-lsp`.) Without it the extension degrades
+gracefully to highlighting only.
+
 ## Install (local dev)
 
 Symlink into your extensions directory and reload VS Code:
@@ -12,12 +31,17 @@ Symlink into your extensions directory and reload VS Code:
 ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/mist-lang
 ```
 
-Or package a `.vsix`:
+Or package a `.vsix` yourself:
 
 ```sh
-npx @vscode/vsce package
-code --install-extension mist-lang-0.1.0.vsix
+npm ci && npx @vscode/vsce package
+code --install-extension mist-lang-0.2.0.vsix
 ```
+
+Releases: pushing a `vscode-v<version>` tag (matching `package.json`) runs
+`.github/workflows/vscode-release.yml` — packages the `.vsix`, publishes to
+the VS Code Marketplace (`VSCE_PAT` secret) and OpenVSX (`OVSX_PAT`,
+best-effort), and attaches the `.vsix` to a GitHub release.
 
 ## What it does
 

@@ -62,6 +62,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup target add ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }} --bin mistc
+      - run: cargo build --release --target ${{ matrix.target }} -p mistc-lsp --bin mistc-lsp
       - name: Stage binary
         shell: bash
         env:
@@ -71,9 +72,11 @@ jobs:
           set -euo pipefail
           ext=""
           [ "$DIR" = "win32-x64" ] && ext=".exe"
-          src="target/$TARGET/release/mistc$ext"
-          test -s "$src" || { echo "binary missing or empty: $src" >&2; exit 1; }
-          cp "$src" "npm/$DIR/bin/mistc$ext"
+          for b in mistc mistc-lsp; do
+            src="target/$TARGET/release/$b$ext"
+            test -s "$src" || { echo "binary missing or empty: $src" >&2; exit 1; }
+            cp "$src" "npm/$DIR/bin/$b$ext"
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.dir }}
@@ -109,10 +112,13 @@ jobs:
         run: |
           set -euo pipefail
           for d in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu linux-x64-musl; do
-            test -s "npm/$d/bin/mistc" || { echo "missing npm/$d/bin/mistc" >&2; exit 1; }
-            chmod +x "npm/$d/bin/mistc"
+            for b in mistc mistc-lsp; do
+              test -s "npm/$d/bin/$b" || { echo "missing npm/$d/bin/$b" >&2; exit 1; }
+              chmod +x "npm/$d/bin/$b"
+            done
           done
           test -s npm/win32-x64/bin/mistc.exe || { echo "missing win32 binary" >&2; exit 1; }
+          test -s npm/win32-x64/bin/mistc-lsp.exe || { echo "missing win32 lsp binary" >&2; exit 1; }
       - name: Stamp version into all package.json
         run: node npm/stamp.mjs "$VERSION"
       - name: Dry-run publish all seven packages

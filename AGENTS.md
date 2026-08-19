@@ -99,7 +99,11 @@ DevTools: Import Project → **repo root** (tracked `project.config.json` has
 `miniprogramRoot: "dist/"`, AppID `touristappid`). After a rebuild, hit compile
 in DevTools.
 
-Editor support: `editors/vscode/` is a VS Code extension — TextMate grammar +
+Editor support: `editors/vscode/` is a VS Code extension (Marketplace id
+`tadejpolajnar.mist-lang`; released by pushing a `vscode-v<version>` tag —
+`.github/workflows/vscode-release.yml` packages, publishes via `VSCE_PAT` /
+`OVSX_PAT`, and attaches the `.vsix` to a GitHub release; see
+docs/npm-distribution.md §VS Code extension releases) — TextMate grammar +
 language config for TS/TSX/CSS highlighting via built-in grammars, plus a thin
 LSP client (`client.js`, needs `npm install` for `vscode-languageclient`) that
 spawns `mistc-lsp` over stdio (PATH or `mist.lspPath` setting; degrades to

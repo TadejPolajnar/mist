@@ -1,9 +1,9 @@
 {
   "name": "mist-lang",
   "displayName": "Mist",
-  "description": "Syntax highlighting for .mist single-file components (mistc)",
-  "version": "0.1.0",
-  "publisher": "mist",
+  "description": "Language support for .mist single-file components — syntax highlighting, diagnostics, completions, hover, go-to-definition, rename and workspace-wide checks via mistc-lsp",
+  "version": "0.2.0",
+  "publisher": "tadejpolajnar",
   "license": "MIT",
   "engines": {
     "vscode": "^1.75.0"
@@ -53,5 +53,22 @@
         }
       }
     ]
-  }
+  },
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TadejPolajnar/mist"
+  },
+  "bugs": {
+    "url": "https://github.com/TadejPolajnar/mist/issues"
+  },
+  "homepage": "https://github.com/TadejPolajnar/mist#readme",
+  "keywords": [
+    "wechat",
+    "miniprogram",
+    "mist",
+    "mistc",
+    "sfc",
+    "tailwind"
+  ]
 }

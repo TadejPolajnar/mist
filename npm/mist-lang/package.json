@@ -4,7 +4,8 @@
   "description": "Mist compiler for WeChat mini-programs",
   "bin": {
     "mistc": "bin/mistc.js",
-    "mist-lang": "bin/mistc.js"
+    "mist-lang": "bin/mistc.js",
+    "mistc-lsp": "bin/mistc-lsp.js"
   },
   "files": [
     "bin"

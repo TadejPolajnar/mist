@@ -190,3 +190,25 @@ After the first release:
 - A JS API wrapper or Vite plugin. If one appears later, that is the point to add a pnpm workspace.
 - Homebrew, cargo-binstall, or other channels.
 - Windows arm64 and other minor targets. Add them when users ask.
+
+## VS Code extension releases
+
+The editor extension ships separately from the compiler packages. Pushing a
+tag `vscode-v<version>` (must match `editors/vscode/package.json`) triggers
+`.github/workflows/vscode-release.yml` under the `release` environment:
+package with `@vscode/vsce`, publish to the VS Code Marketplace using the
+`VSCE_PAT` repo secret, best-effort publish to OpenVSX with `OVSX_PAT`, and
+attach the `.vsix` to a GitHub release.
+
+One-time setup (maintainer):
+
+1. Create a publisher at https://marketplace.visualstudio.com/manage —
+   the id must be `tadejpolajnar` (or update `publisher` in
+   `editors/vscode/package.json` to match).
+2. Create an Azure DevOps PAT with the **Marketplace → Manage** scope and
+   store it: `gh secret set VSCE_PAT`.
+3. Optional: an OpenVSX token from https://open-vsx.org → `gh secret set OVSX_PAT`.
+
+Version policy: the extension's minor tracks the compiler's released minor
+(extension 0.2.x ↔ compiler 0.2.x); bump `editors/vscode/package.json`, tag
+`vscode-v<version>`, push the tag.
