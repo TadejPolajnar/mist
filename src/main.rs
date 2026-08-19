@@ -47,6 +47,8 @@ enum Command {
         filter: Option<String>,
         #[arg(long, default_value_t = 30, help = "Per-file timeout in seconds")]
         timeout: u64,
+        #[arg(long, help = "Rerun the tests when src/ or tests/ files change")]
+        watch: bool,
     },
 }
 
@@ -67,15 +69,19 @@ fn main() {
                 exit(1);
             }
         }
-        Command::Test { dir, filter, timeout } => match run_tests(&dir, filter.as_deref(), timeout)
-        {
-            Ok(true) => {}
-            Ok(false) => exit(1),
-            Err(e) => {
-                eprintln!("error: {}", e);
-                exit(1);
+        Command::Test { dir, filter, timeout, watch } => {
+            if watch {
+                test_watch_loop(&dir, filter.as_deref(), timeout);
             }
-        },
+            match run_tests(&dir, filter.as_deref(), timeout) {
+                Ok(true) => {}
+                Ok(false) => exit(1),
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    exit(1);
+                }
+            }
+        }
     }
 }
 
@@ -131,6 +137,52 @@ fn run_node_test(
             let stderr = if stderr.trim().is_empty() { note } else { format!("{}\n{}", stderr, note) };
             Ok((false, stdout, stderr))
         }
+    }
+}
+
+fn test_watch_loop(dir: &Path, filter: Option<&str>, timeout_secs: u64) -> ! {
+    if !dir.join("src").join("app.mist").is_file() || !dir.join("tests").is_dir() {
+        eprintln!(
+            "error: {} has no src/app.mist and tests/ — run from the project root",
+            dir.display()
+        );
+        exit(1);
+    }
+    let run = |label: &str| {
+        println!("{}", label);
+        if let Err(e) = run_tests(dir, filter, timeout_secs) {
+            eprintln!("error: {}", e);
+        }
+    };
+    run("running tests…");
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if let Ok(event) = res {
+            let relevant = event.paths.iter().any(|p| {
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let ext = p.extension().and_then(|e| e.to_str());
+                matches!(ext, Some("mist") | Some("ts")) || name.ends_with(".test.js")
+            });
+            if relevant {
+                let _ = tx.send(());
+            }
+        }
+    })
+    .expect("cannot create file watcher");
+    for sub in ["src", "tests"] {
+        watcher
+            .watch(&dir.join(sub), RecursiveMode::Recursive)
+            .expect("cannot watch project directory");
+    }
+    println!(
+        "watching {} and {} for changes… (ctrl-c to quit)",
+        dir.join("src").display(),
+        dir.join("tests").display()
+    );
+    loop {
+        let Ok(()) = rx.recv() else { continue };
+        while rx.recv_timeout(Duration::from_millis(120)).is_ok() {}
+        run("— rerunning tests");
     }
 }
 

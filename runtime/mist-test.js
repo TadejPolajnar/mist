@@ -147,8 +147,18 @@ globalThis.load = load;
 globalThis.resetModules = resetModules;
 globalThis.appHide = appHide;
 
+function printError(err) {
+  const text = err && err.stack ? err.stack : String(err);
+  console.error(
+    text
+      .split('\n')
+      .filter((line) => !line.includes('.mist-test-runner.js'))
+      .join('\n')
+  );
+}
+
 process.on('unhandledRejection', (err) => {
-  console.error(err && err.stack ? err.stack : String(err));
+  printError(err);
   process.exit(1);
 });
 
@@ -161,6 +171,6 @@ process.on('unhandledRejection', (err) => {
   }
   await flush();
 })().catch((err) => {
-  console.error(err && err.stack ? err.stack : String(err));
+  printError(err);
   process.exit(1);
 });

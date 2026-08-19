@@ -83,7 +83,7 @@ Static object literal → the unit's `.json` (page window config, or app-level
 ```
 mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
-mistc test [dir] [--filter <substring>] [--timeout <secs>]
+mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
 ```
 
 - **`init`** → scaffolds `<name>/` (app.mist, a todo page, a sample test,

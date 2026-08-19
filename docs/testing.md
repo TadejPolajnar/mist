@@ -10,6 +10,7 @@ device, no DevTools, no extra dependencies beyond Node.
 mistc test                   # from the project root (src/ + tests/)
 mistc test --filter cart     # only files whose file name (not path) contains "cart"
 mistc test --timeout 60      # per-file timeout in seconds (default 30)
+mistc test --watch           # rerun when src/ or tests/ files change
 ```
 
 A file that exceeds the timeout is killed and reported as `FAIL … timed out`.

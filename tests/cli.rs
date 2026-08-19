@@ -113,6 +113,64 @@ fn test_command_runs_scaffolded_suite() {
 }
 
 #[test]
+fn test_command_watch_reruns_on_change() {
+    use std::io::BufRead;
+    let dir = std::env::temp_dir().join("mist-cli-test-watch");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    if !node_available() {
+        eprintln!("skipping: node not available");
+        return;
+    }
+    let root = dir.join("app");
+    let mut child = Command::new(bin())
+        .args(["test", "--watch"])
+        .current_dir(&root)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout).lines().map_while(|l| l.ok()) {
+            if tx.send(line).is_err() {
+                return;
+            }
+        }
+    });
+    let wait_for = |needle: &str| -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(std::time::Duration::from_secs(1)) {
+                Ok(line) if line.contains(needle) => return true,
+                _ => {}
+            }
+        }
+        false
+    };
+    let first = wait_for("1 passed, 0 failed");
+    if !first {
+        let _ = child.kill();
+        panic!("initial watch run did not report a passing suite");
+    }
+    if !wait_for("watching") {
+        let _ = child.kill();
+        panic!("watcher never registered");
+    }
+    std::fs::write(
+        root.join("tests/second.test.js"),
+        "module.exports = async () => { bootPage('index'); };\n",
+    )
+    .unwrap();
+    let rerun = wait_for("2 passed, 0 failed");
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(rerun, "watch did not rerun after a test file was added");
+}
+
+#[test]
 fn test_command_requires_project_layout() {
     let dir = std::env::temp_dir().join("mist-cli-test-cmd-empty");
     let _ = std::fs::remove_dir_all(&dir);

@@ -63,7 +63,7 @@ WXML 无法求值的模板绑定——函数调用、模板字符串、可选链
 ```
 mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
-mistc test [dir] [--filter <substring>] [--timeout <secs>]
+mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
 ```
 
 - **`init`** → 生成 `<name>/`（app.mist、一个待办页面、一个示例测试、project.config.json、`mist.d.ts` + `tsconfig.json` + `package.json`，用于编辑器类型提示）。

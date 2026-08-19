@@ -10,6 +10,7 @@
 mistc test                   # 在项目根目录运行（src/ + tests/）
 mistc test --filter cart     # 只运行文件名（不含路径）包含 "cart" 的测试
 mistc test --timeout 60      # 单文件超时秒数（默认 30）
+mistc test --watch           # src/ 或 tests/ 文件变更时自动重跑
 ```
 
 超过超时的文件会被终止并报告为 `FAIL … timed out`。
