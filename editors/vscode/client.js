@@ -9,7 +9,10 @@ function activate() {
     'mist',
     'Mist Language Server',
     { command },
-    { documentSelector: [{ language: 'mist' }] }
+    {
+      documentSelector: [{ language: 'mist' }],
+      synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.ts') },
+    }
   )
   client.start().catch(() => {
     client = undefined

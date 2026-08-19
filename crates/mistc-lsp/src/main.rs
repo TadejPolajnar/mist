@@ -194,6 +194,58 @@ fn imports_store(src: &str, file_dir: &Path, store_canon: &Path, name: &str) -> 
     false
 }
 
+fn imports_path(src: &str, file_dir: &Path, target_canon: &Path) -> bool {
+    let re = Regex::new(r#"from\s*['"](\.[^'"]+)['"]"#).unwrap();
+    let hit = re.captures_iter(src).any(|caps| {
+        file_dir
+            .join(caps.get(1).unwrap().as_str())
+            .canonicalize()
+            .is_ok_and(|canon| canon == target_canon)
+    });
+    hit
+}
+
+fn project_files_with_open(root: &Path, docs: &HashMap<Url, String>) -> Vec<(PathBuf, String)> {
+    let mut paths = Vec::new();
+    collect_project_files(root, &mut paths);
+    let mut open_by_path: HashMap<PathBuf, &String> = HashMap::new();
+    for (uri, text) in docs.iter() {
+        if let Ok(p) = uri.to_file_path() {
+            if let Ok(canon) = p.canonicalize() {
+                open_by_path.insert(canon, text);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for p in paths {
+        let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+        let src = match open_by_path.get(&canon) {
+            Some(text) => (*text).clone(),
+            None => match std::fs::read_to_string(&p) {
+                Ok(s) => s,
+                Err(_) => continue,
+            },
+        };
+        out.push((p, src));
+    }
+    out
+}
+
+fn store_importers<'a>(
+    files: &'a [(PathBuf, String)],
+    changed_canon: &Path,
+) -> Vec<&'a (PathBuf, String)> {
+    files
+        .iter()
+        .filter(|(path, src)| {
+            path.extension().and_then(|e| e.to_str()) == Some("mist")
+                && path
+                    .parent()
+                    .is_some_and(|dir| imports_path(src, dir, changed_canon))
+        })
+        .collect()
+}
+
 fn store_rename_edits(
     store_canon: &Path,
     name: &str,
@@ -798,31 +850,39 @@ impl Backend {
         });
     }
 
-    async fn project_files(&self, root: &Path) -> Vec<(PathBuf, String)> {
-        let mut paths = Vec::new();
-        collect_project_files(root, &mut paths);
-        let docs = self.docs.read().await;
-        let mut open_by_path: HashMap<PathBuf, &String> = HashMap::new();
-        for (uri, text) in docs.iter() {
-            if let Ok(p) = uri.to_file_path() {
-                if let Ok(canon) = p.canonicalize() {
-                    open_by_path.insert(canon, text);
-                }
+    async fn rediagnose_store_importers(&self, changed: PathBuf) {
+        let Ok(changed_uri) = Url::from_file_path(&changed) else { return };
+        let generation = self.gen_counter.fetch_add(1, Ordering::SeqCst) + 1;
+        self.diag_gen.write().await.insert(changed_uri.clone(), generation);
+        let diag_gen = Arc::clone(&self.diag_gen);
+        let docs = Arc::clone(&self.docs);
+        let client = self.client.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            if diag_gen.read().await.get(&changed_uri) != Some(&generation) {
+                return;
             }
-        }
-        let mut out = Vec::new();
-        for p in paths {
-            let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
-            let src = match open_by_path.get(&canon) {
-                Some(text) => (*text).clone(),
-                None => match std::fs::read_to_string(&p) {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                },
+            let Ok(changed_canon) = changed.canonicalize() else { return };
+            let Some(root) = changed.parent().and_then(project_src_root) else { return };
+            let files = {
+                let docs = docs.read().await;
+                project_files_with_open(&root, &docs)
             };
-            out.push((p, src));
-        }
-        out
+            for (path, src) in store_importers(&files, &changed_canon) {
+                let Ok(canon) = path.canonicalize() else { continue };
+                let Ok(uri) = Url::from_file_path(&canon) else { continue };
+                let diagnostics = diagnostics_for(&uri, src);
+                if diag_gen.read().await.get(&changed_uri) != Some(&generation) {
+                    return;
+                }
+                client.publish_diagnostics(uri, diagnostics, None).await;
+            }
+        });
+    }
+
+    async fn project_files(&self, root: &Path) -> Vec<(PathBuf, String)> {
+        let docs = self.docs.read().await;
+        project_files_with_open(root, &docs)
     }
 }
 
@@ -877,6 +937,16 @@ impl LanguageServer for Backend {
             entry.clone()
         };
         self.publish_debounced(uri, src).await;
+    }
+
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        for change in params.changes {
+            let Ok(path) = change.uri.to_file_path() else { continue };
+            if path.extension().and_then(|e| e.to_str()) != Some("ts") {
+                continue;
+            }
+            self.rediagnose_store_importers(path).await;
+        }
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -1307,6 +1377,28 @@ mod tests {
         assert!(mist_decl_collision(&files, &changes, "record").is_some());
         assert!(mist_decl_collision(&files, &changes, "unused").is_none());
         assert!(mist_decl_collision(&files, &HashMap::new(), "record").is_none());
+    }
+
+    #[test]
+    fn store_importers_finds_only_importing_pages() {
+        let dir = std::env::temp_dir().join("mist-lsp-ws-diag-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("pages")).unwrap();
+        std::fs::create_dir_all(dir.join("stores")).unwrap();
+        std::fs::write(dir.join("stores/cart.ts"), "export function add() {}\n").unwrap();
+        let importer = "---\nimport { add } from '../stores/cart.ts'\n---\n<span onTap={add}>x</span>\n";
+        let bystander = "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n";
+        std::fs::write(dir.join("pages/a.mist"), importer).unwrap();
+        std::fs::write(dir.join("pages/b.mist"), bystander).unwrap();
+        let files = vec![
+            (dir.join("pages/a.mist"), importer.to_string()),
+            (dir.join("pages/b.mist"), bystander.to_string()),
+            (dir.join("stores/cart.ts"), "export function add() {}\n".to_string()),
+        ];
+        let canon = dir.join("stores/cart.ts").canonicalize().unwrap();
+        let hits = store_importers(&files, &canon);
+        assert_eq!(hits.len(), 1, "only the importing page");
+        assert!(hits[0].0.ends_with("pages/a.mist"));
     }
 
     #[test]

@@ -117,8 +117,14 @@ come from regex over the frontmatter text, not spans. **Cross-file store
 rename**: renaming a store symbol from a page walks up to the `app.mist`
 src root, scans `.mist`/`.ts` project files (open-buffer versions win over
 disk), matches importers by canonical store path (`imports_store`), and
-returns a multi-file `WorkspaceEdit` (`store_rename_edits`). Grammar and
-LSP must track template/frontmatter syntax changes.
+returns a multi-file `WorkspaceEdit` (`store_rename_edits`). **Workspace
+diagnostics**: the vscode client watches `**/*.ts` (`synchronize.fileEvents`);
+on a store-file save the server (`did_change_watched_files` →
+`rediagnose_store_importers`, 300ms generation-debounced, spawned off the
+handler) re-runs `diagnostics_for` over every project `.mist` file whose
+imports resolve to the changed path (`store_importers`) and publishes —
+importing pages never show stale store diagnostics. Grammar and LSP must
+track template/frontmatter syntax changes.
 
 Commits: **Conventional Commits, subject line only.** History pattern per
 milestone: `feat:` → subagent review → `fix: address … review findings`.

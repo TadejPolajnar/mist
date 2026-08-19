@@ -25,6 +25,10 @@ server.stdout.on('data', (d) => {
     } else if (msg.method === 'textDocument/publishDiagnostics') {
       diagRounds.push(msg.params.diagnostics)
       if (diagWaiter) { diagWaiter(); diagWaiter = null }
+      if (msg.params.uri.endsWith('store.mist')) {
+        storeMistDiags.push(msg.params.diagnostics)
+        if (storeWaiter) { storeWaiter(); storeWaiter = null }
+      }
     }
   }
 })
@@ -41,6 +45,12 @@ function send(method, params, expectReply) {
 function waitDiag(count) {
   if (diagRounds.length >= count) return Promise.resolve()
   return new Promise((resolve) => { diagWaiter = resolve })
+}
+const storeMistDiags = []
+let storeWaiter = null
+function waitStoreDiag(count) {
+  if (storeMistDiags.length >= count) return Promise.resolve()
+  return new Promise((resolve) => { storeWaiter = resolve })
 }
 function check(name, cond, detail) {
   if (cond) console.log('PASS', name)
@@ -113,6 +123,20 @@ async function main() {
   const storeFile = changed.find((k) => k.endsWith('stats.ts'))
   const pageFile = changed.find((k) => k.endsWith('store.mist'))
   check('rename-cross-file', changed.length === 2 && storeFile && pageFile && xr.result.changes[pageFile].length === 2 && xr.result.changes[storeFile].length >= 1, JSON.stringify(xr.result))
+
+  const fs = require('node:fs')
+  const statsPath = root + '/stores/stats.ts'
+  const goodStore = fs.readFileSync(statsPath, 'utf8')
+  const statsUri = pathToFileURL(statsPath).href
+  storeMistDiags.length = 0
+  fs.writeFileSync(statsPath, 'export function track( {\n')
+  await send('workspace/didChangeWatchedFiles', { changes: [{ uri: statsUri, type: 2 }] })
+  await waitStoreDiag(1)
+  check('ws-diag-broken', storeMistDiags[0].length >= 1, JSON.stringify(storeMistDiags[0]))
+  fs.writeFileSync(statsPath, goodStore)
+  await send('workspace/didChangeWatchedFiles', { changes: [{ uri: statsUri, type: 2 }] })
+  await waitStoreDiag(2)
+  check('ws-diag-cleared', storeMistDiags[1].length === 0, JSON.stringify(storeMistDiags[1]))
 
   console.log(failures.length === 0 ? 'ALL OK' : `FAILED ${failures.length}`)
   server.kill()
