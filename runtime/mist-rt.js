@@ -35,6 +35,65 @@ function readPath(obj, path) {
   return cur;
 }
 
+let budget = 900 * 1024;
+
+function setDataBudget(bytes) {
+  budget = bytes;
+}
+
+function utf8Len(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (
+      c >= 0xd800 &&
+      c < 0xdc00 &&
+      i + 1 < s.length &&
+      s.charCodeAt(i + 1) >= 0xdc00 &&
+      s.charCodeAt(i + 1) < 0xe000
+    ) {
+      n += 4;
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
+
+function send(page, payload) {
+  const keys = Object.keys(payload);
+  if (keys.length < 2) {
+    page.setData(payload);
+    return;
+  }
+  let total = 0;
+  let oversized = false;
+  const sizes = keys.map((k) => {
+    const v = payload[k];
+    const s = k.length + (v === undefined ? 9 : utf8Len(JSON.stringify(v))) + 6;
+    if (s > budget) oversized = true;
+    total += s;
+    return s;
+  });
+  if (total <= budget || oversized) {
+    page.setData(payload);
+    return;
+  }
+  let chunk = {};
+  let chunkSize = 0;
+  for (let i = 0; i < keys.length; i++) {
+    if (chunkSize > 0 && chunkSize + sizes[i] > budget) {
+      page.setData(chunk);
+      chunk = {};
+      chunkSize = 0;
+    }
+    chunk[keys[i]] = payload[keys[i]];
+    chunkSize += sizes[i];
+  }
+  page.setData(chunk);
+}
+
 function flush(page) {
   const pending = page.__pending;
   page.__pending = null;
@@ -49,7 +108,7 @@ function flush(page) {
   const undo = page.__undo;
   page.__undo = null;
   try {
-    page.setData(pending);
+    send(page, pending);
     page.__dirty = null;
     page.__dirtyAll = false;
     page.__resync = false;
@@ -85,7 +144,7 @@ function touch(page, name) {
 
 function init(page) {
   const seed = page.__derive();
-  if (Object.keys(seed).length) page.setData(seed);
+  if (Object.keys(seed).length) send(page, seed);
 }
 
 // `todos[3].done` → ['todos', 3, 'done']
@@ -369,6 +428,7 @@ module.exports = {
   set,
   touch,
   flush,
+  setDataBudget,
   init,
   derive,
   applyPath,

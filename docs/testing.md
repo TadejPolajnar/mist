@@ -48,7 +48,10 @@ These globals are available in every test file:
     catches it and rolls back — so the rollback path is exercised for
     real, but your test never sees the throw. Assert on the handle's
     `rejected` array instead. Lower the limit to enforce a stricter
-    payload budget.
+    payload budget. Note the runtime chunks multi-key batches over its own
+    ~900KB budget into several sequential `setData` calls — each lands in
+    `patches` separately; only a single key too large to split can be
+    rejected.
 
   Returns a handle:
   - `page` — the registered Page object: call your methods

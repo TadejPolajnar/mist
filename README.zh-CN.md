@@ -152,7 +152,7 @@ src/
 | `<input value:bind={text} />` | 原生 `model:value` + 生成的同步 handler |
 | 模板中的 `{fmt(total.value)}` | 提升为生成的 derived；循环内按条目提升 |
 
-同一事件周期内的所有写入合并为**一次** `setData`。带 `key={...}` 的 derived 数组做带键浅 diff——原位修改一项只发送 `visible[3]`，而不是整个数组。
+同一事件周期内的所有写入合并为**一次** `setData`（超过微信载荷预算的批次会拆分为连续多次调用，而不是直接失败）。带 `key={...}` 的 derived 数组做带键浅 diff——原位修改一项只发送 `visible[3]`，而不是整个数组。
 
 **模板**——Web 常用标签映射为原生标签（`div`→`view`、`span`→`text`、`img`→`image`、`a href`→`navigator url`；原生标签直接透传）。`{expr}` 绑定（自动剥离 `.value`），`.map()` → `wx:for` + 必填 `wx:key`，`&&` → `wx:if`。事件：`onTap={fn}`、`onTap:catch={fn}`，带参数的内联箭头函数编译为 handler + `data-*`。Tailwind class 随处可用，包括条件表达式。
 

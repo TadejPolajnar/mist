@@ -126,9 +126,16 @@ You never import this — generated code does. For debugging, its surface:
 
 - `set(page, path, value)` / `touch(page)` / `flush(page)` — batch a write / a
   derive-only pass / the once-per-microtask flush that issues one `setData`.
-  A rejected `setData` (e.g. payload too large) rolls the page's local mirror
-  back, and store-bound pages then reseed their mirrors from current store
-  values — a failed batch never leaves a page desynced from its stores.
+  A multi-key batch over the ~900KB budget is split into sequential in-order
+  `setData` calls (`setDataBudget(bytes)` tunes it) instead of failing; a
+  batch containing any single over-budget key is sent whole so rejection
+  stays all-or-nothing (sizing is UTF-8-byte-accurate, so chunks cannot be
+  size-rejected mid-sequence; a non-size WeChat error mid-sequence can still
+  leave earlier chunks applied — rollback then restores the logic side and
+  the next flush reconverges). A rejected `setData` (e.g. one value alone exceeds
+  WeChat's 1MB limit) rolls the page's local mirror back, and store-bound
+  pages then reseed their mirrors from current store values — a failed batch
+  never leaves a page desynced from its stores.
 - `init(page)` — first-render derive seed (called from generated `onLoad`/`attached`).
 - `applyPath(obj, path, value)` — path-string writer used by the batcher.
 - `derive(page, out, name, key, compute, deps)` — recompute one derived with

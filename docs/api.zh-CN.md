@@ -95,7 +95,7 @@ dist/
 你永远不需要导入它——生成的代码会导入。为了调试，其接口如下：
 
 - `set(page, path, value)` / `touch(page)` / `flush(page)` —— 批量合并一次写入 / 一次仅重算派生值的遍历 / 每微任务一次的刷写（flush），只发出一次 `setData`。
-  被拒绝的 `setData`（例如载荷过大）会把页面的本地镜像回滚，随后绑定了 store 的页面会从当前 store 值重新播种镜像——失败的批次绝不会让页面与其 store 失去同步。
+  超过约 900KB 预算的多键批次会按原顺序拆分为连续多次 `setData`（`setDataBudget(bytes)` 可调），不再直接失败；含有任何单个超预算键的批次整体发送，保证拒绝仍是全有或全无（体积按 UTF-8 字节精确计算，因此分块不会在序列中途因体积被拒；序列中途出现非体积类微信错误时，先前的分块仍已生效——回滚会恢复逻辑侧状态，下一次 flush 重新收敛）。被拒绝的 `setData`（例如单个值就超过微信 1MB 限制）会把页面的本地镜像回滚，随后绑定了 store 的页面会从当前 store 值重新播种镜像——失败的批次绝不会让页面与其 store 失去同步。
 - `init(page)` —— 首次渲染的派生值播种（由生成的 `onLoad`/`attached` 调用）。
 - `applyPath(obj, path, value)` —— 批处理器使用的路径字符串写入器。
 - `derive(page, out, name, key, compute, deps)` —— 重算一个派生值，对快照做键控字段级 diff；`deps` 驱动按派生值粒度的脏位跳过（null ⇒ 总是重算）。

@@ -527,3 +527,121 @@ console.log('OK');
     );
     assert_eq!(out, "OK");
 }
+
+#[test]
+fn over_budget_batches_chunk_in_order() {
+    let out = run_node(
+        r#"
+rt.setDataBudget(200);
+const calls = [];
+const page = {
+  data: {},
+  setData(o) { calls.push(Object.keys(o)); },
+  __derive() { return {}; },
+};
+const big = 'x'.repeat(80);
+for (let i = 0; i < 6; i++) {
+  rt.set(page, 'k' + i, big);
+}
+rt.flush(page);
+if (calls.length < 2) throw new Error('expected chunked calls, got ' + calls.length);
+const seen = calls.flat();
+if (seen.length !== 6) throw new Error('keys lost: ' + JSON.stringify(calls));
+for (let i = 0; i < 6; i++) {
+  if (seen[i] !== 'k' + i) throw new Error('order broken: ' + JSON.stringify(seen));
+}
+if (page.data.k0 !== big || page.data.k5 !== big) throw new Error('mirror not applied');
+console.log('CHUNKED ' + calls.length);
+"#,
+    );
+    assert!(out.starts_with("CHUNKED"), "out: {}", out);
+}
+
+#[test]
+fn under_budget_batches_stay_single_call() {
+    let out = run_node(
+        r#"
+const calls = [];
+const page = {
+  data: {},
+  setData(o) { calls.push(Object.keys(o).length); },
+  __derive() { return {}; },
+};
+rt.set(page, 'a', 1);
+rt.set(page, 'b', 2);
+rt.flush(page);
+if (calls.length !== 1 || calls[0] !== 2) throw new Error('expected one call: ' + JSON.stringify(calls));
+console.log('SINGLE');
+"#,
+    );
+    assert_eq!(out, "SINGLE");
+}
+
+#[test]
+fn oversized_single_key_is_never_split() {
+    let out = run_node(
+        r#"
+rt.setDataBudget(200);
+const calls = [];
+const page = {
+  data: {},
+  setData(o) {
+    calls.push(Object.keys(o).length);
+    throw new Error('too big');
+  },
+  __derive() { return {}; },
+};
+rt.set(page, 'small', 1);
+rt.set(page, 'huge', 'x'.repeat(500));
+rt.flush(page);
+if (calls.length !== 1) throw new Error('oversized entry must keep one whole-batch call: ' + JSON.stringify(calls));
+if (calls[0] !== 2) throw new Error('whole batch must go in the single call');
+if ('small' in page.data || 'huge' in page.data) throw new Error('rollback must restore the mirror');
+console.log('WHOLE-REJECTED');
+"#,
+    );
+    assert_eq!(out, "WHOLE-REJECTED");
+}
+
+#[test]
+fn chunk_sizing_counts_utf8_bytes_not_utf16_units() {
+    let out = run_node(
+        r#"
+rt.setDataBudget(260);
+const calls = [];
+const page = {
+  data: {},
+  setData(o) { calls.push(Object.keys(o)); },
+  __derive() { return {}; },
+};
+const cjk = '雾'.repeat(60);
+rt.set(page, 'a', cjk);
+rt.set(page, 'b', cjk);
+rt.flush(page);
+if (calls.length !== 2) throw new Error('CJK payload must size by bytes and chunk: ' + calls.length);
+console.log('BYTES');
+"#,
+    );
+    assert_eq!(out, "BYTES");
+}
+
+#[test]
+fn chunk_sizing_never_undercounts_lone_surrogates() {
+    let out = run_node(
+        r#"
+rt.setDataBudget(40);
+const calls = [];
+const page = {
+  data: {},
+  setData(o) { calls.push(Object.keys(o)); },
+  __derive() { return {}; },
+};
+rt.set(page, 'a', '\ud800€€€');
+rt.set(page, 'b', '\ud800€€€');
+rt.flush(page);
+if (calls.length !== 2) throw new Error('lone-surrogate strings must still size safely: ' + calls.length);
+console.log('SAFE');
+"#,
+    );
+    assert_eq!(out, "SAFE");
+}

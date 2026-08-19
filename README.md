@@ -152,7 +152,7 @@ src/
 | `<input value:bind={text} />` | native `model:value` + generated sync handler |
 | `{fmt(total.value)}` in a template | hoisted into a generated derived; per-item inside loops |
 
-All writes in one event tick merge into **one** `setData`. Derived arrays rendered with `key={...}` get a keyed shallow diff — an in-place item change emits `visible[3]`, not the array.
+All writes in one event tick merge into **one** `setData` (batches over WeChat's payload budget chunk into sequential calls instead of failing). Derived arrays rendered with `key={...}` get a keyed shallow diff — an in-place item change emits `visible[3]`, not the array.
 
 **Templates** — web-familiar tags map to native ones (`div`→`view`, `span`→`text`, `img`→`image`, `a href`→`navigator url`; native tags pass through). `{expr}` binds (`.value` stripped), `.map()` → `wx:for` + required `wx:key`, `&&` → `wx:if`. Events: `onTap={fn}`, `onTap:catch={fn}`, inline arrows with args compile to handlers + `data-*`. Tailwind classes everywhere, including conditionals.
 
