@@ -220,7 +220,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
 | `inline.rs` (9) | pure-render inlining, slots, multipleSlots |
 | `components.rs` (25) | properties, callback events, usingComponents |
 | `diagnostics.rs` (78) | M-code positions and messages, M1001/M1007/M1009/M1021, npm guard |
-| `crates/mistc-lsp` (14 unit + 1 e2e) | LSP helpers incl. incremental sync + cross-file rename; full stdio protocol session via a Node driver |
+| `crates/mistc-lsp` (unit + 1 e2e) | LSP helpers incl. incremental sync, cross-file rename and template completions; full stdio protocol session via a Node driver |
 | `todo.rs` (1) | single-file smoke test |
 | `edge_cases.rs` (14) | error paths, unicode, deep paths, config edge cases |
 | `cli.rs` (11) | --version/--help, unknown-command suggestion, init scaffold compiles, mist-routes.d.ts emission |

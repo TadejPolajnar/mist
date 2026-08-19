@@ -653,10 +653,12 @@ fn template_completions(
 }
 
 fn open_or_disk(docs: &HashMap<Url, String>, path: &Path) -> Option<String> {
-    let canon = path.canonicalize().ok();
+    let Some(canon) = path.canonicalize().ok() else {
+        return std::fs::read_to_string(path).ok();
+    };
     for (doc_uri, text) in docs {
         if let Ok(p) = doc_uri.to_file_path() {
-            if Some(&p) == canon.as_ref() || p.canonicalize().ok() == canon {
+            if p == canon || p.canonicalize().is_ok_and(|c| c == canon) {
                 return Some(text.clone());
             }
         }
@@ -1155,6 +1157,31 @@ mod tests {
         assert!(
             template_context(closing, Position { line: 2, character: 16 }).is_none(),
             "mid-typing /> must not offer attributes"
+        );
+    }
+
+    #[test]
+    fn open_or_disk_never_matches_unrelated_buffers() {
+        let mut docs = HashMap::new();
+        docs.insert(
+            Url::parse("file:///nonexistent-open-doc/a.mist").unwrap(),
+            "unsaved buffer".to_string(),
+        );
+        assert_eq!(
+            open_or_disk(&docs, Path::new("/nonexistent-target/b.mist")),
+            None,
+            "a missing target must not resolve to an unrelated open buffer"
+        );
+        let dir = std::env::temp_dir().join("mist-lsp-open-or-disk");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("c.mist"), "on disk").unwrap();
+        let canon = dir.join("c.mist").canonicalize().unwrap();
+        docs.insert(Url::from_file_path(&canon).unwrap(), "open version".to_string());
+        assert_eq!(
+            open_or_disk(&docs, &dir.join("c.mist")).as_deref(),
+            Some("open version"),
+            "open buffers must win over disk"
         );
     }
 
