@@ -168,7 +168,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    mutation, line:col + help), M1005 (name collision), M1006 (dropped selector,
    warn), M1007 (reactive use without `.value`, line:col + help), M1008
    (keyless reactive list, warn — flows through `Unit.warnings`/`Project.warnings`),
-   M1009 (call in nested loop), M1010 (template syntax, has line), M1011 (unknown/aliased/default 'mist'
+   M1009 (call ≥3 loop levels deep; 1–2 levels hoist), M1010 (template syntax, has line), M1011 (unknown/aliased/default 'mist'
    import, line:col + help), M1012 (config enables a feature with no declared
    hook, warn), M1013 (hook declared in the wrong unit kind — page/component/app,
    line:col + help; app-only hooks are `onError`, `onPageNotFound`,
@@ -204,7 +204,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    instead when that's statically extractable via
    `frontmatter::config_tab_bar_page_paths`; flat/single-file builds compile
    `navigate()` calls with no route-list check at all — no route set exists).
-   M1001–M1028 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs; M1027 used feature exceeds `config.minLibVersion` — curated `SINCE` table in tag_meta.rs, opt-in, warning-tier; app.mist's declaration is the project-wide floor, per-unit overrides, and inlined template units report their own M1023/24/27 hits via `meta_warning_texts`; M1028 bundled npm package references browser APIs WeChat lacks — token scan in `npm_bundle::foreign_api_hits`, suppressed via app.mist `config.trustedPackages`).
+   M1001–M1028 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs; M1027 used feature exceeds `config.minLibVersion` — curated `SINCE` table in tag_meta.rs, opt-in, warning-tier; app.mist's declaration is the project-wide floor, per-unit overrides, and inlined template units report their own M1023/24/27 hits via `meta_warning_texts`; M1028 bundled npm package references browser APIs WeChat lacks — token scan in `npm_bundle::foreign_api_hits`, suppressed via app.mist `config.trustedPackages`. M1026's per-call escape hatch is `raw(x)` — `RawRewrite` in frontmatter.rs strips the wrapper and prepends a conservative full-value re-sync of the wrapped reactive root; works in pages, components and store modules. `config.behaviors` (component-only) accepts `wx://` built-ins only).
    Frontmatter TS is type-stripped (`strip_types`, whitespace-
    preserving blanking) before analysis, so annotations never reach emitted JS.
    `tests/diagnostics.rs` asserts on message substrings — reformatting breaks it.

@@ -164,13 +164,14 @@ const { todo, onToggle } = props({ todo: null })
 
 非内联组件默认生成 `"styleIsolation": "isolated"`；在 `config` 中设置 `styleIsolation` 可覆盖，例如 `'apply-shared'` 允许页面样式级联进来。
 
-**组件选项——`virtualHost`、`pureDataPattern`、`externalClasses`：**仅组件可用的 `config` 键，仅存在于编译期（永远不会进入生成的 `.json`）：
+**组件选项——`virtualHost`、`pureDataPattern`、`externalClasses`、`behaviors`：**仅组件可用的 `config` 键，仅存在于编译期（永远不会进入生成的 `.json`）：
 
 ```jsx
 export const config = {
   virtualHost: true,
   pureDataPattern: '^_',
   externalClasses: ['x-class'],
+  behaviors: ['wx://form-field'],
 }
 ```
 
@@ -186,7 +187,13 @@ export const config = {
   父级模板中的 `<my-comp x-class="red-text" />` 是普通 WXML
   属性透传——没有特殊的 mist 语法。每一项只能包含
   字母/数字/`-`/`_`。
-- 三者都仅限组件；在页面或 `app.mist` 中使用是编译错误。
+- `behaviors: ['wx://form-field', ...]` 挂载微信内置 behavior——
+  `wx://form-field` 让组件参与 `<form>` 的 submit/reset，其余内置项还有
+  `wx://form-field-group`、`wx://form-field-button` 和
+  `wx://component-export`。只接受 `wx://` behavior：用户自定义 behavior
+  是外部代码，可能在编译器追踪之外修改 `data`，会破坏路径精确的
+  `setData`。
+- 四者都仅限组件；在页面或 `app.mist` 中使用是编译错误。
 
 **冒泡的回调事件：**默认情况下回调事件只到达直接父级。在 `config` 中设置 `events`，为回调 prop 添加 `triggerEvent` 选项，让孙组件无需每个中间组件手动转发回调即可通知祖父组件：
 
@@ -554,6 +561,21 @@ function f() {
 }
 ```
 
+当拷贝不现实——对象太大，或库必须拿到实时值——用 `raw()` 包裹参数以
+确认这个边界：
+
+```ts
+import { raw } from 'mist'
+
+sortInPlace(raw(items.value))     // ✓ 可以编译；调用后 items 会被重新同步
+```
+
+`raw()` 编译后消失，但它告诉编译器你接受被调函数可能修改该值。作为
+交换，编译器在调用后保守地重新同步整个被包裹的根——对该字段做一次
+全量 `setData`（未绑定的 state 则重新计算 derived），而非路径精确
+更新。把它当作逃生舱使用：数据小时优先
+拷贝，并预期每次调用都要为该字段付出一次完整序列化的成本。
+
 返回值是普通数据——赋给 state 没有问题。检查覆盖直接调用（包括
 `dayjs.utc(...)` 这样的成员调用）；通过别名或回调转交响应式值属于
 M1001 记录的同一类不可追踪边界。打包只在项目构建中进行——单文件构建
@@ -570,6 +592,6 @@ export const config = { trustedPackages: ['fuse.js'] }
 
 ## 尚未支持（路线图——这些功能今天会给出明确的错误）
 
-嵌套循环内的调用（M1009）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
+三层及以上循环内的调用（M1009——一层和两层会自动提升）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
 
 TypeScript 注解（参数/返回类型、`interface`、`type`、`as`、泛型、`import type`）在生成前被剥离——放心添加注解；它们都不会进入生成的 JS。`enum` 是例外：它是运行时构造，会被拒绝并附带修复提示（请使用 const 对象或字符串字面量联合类型）。

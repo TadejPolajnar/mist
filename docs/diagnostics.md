@@ -109,11 +109,14 @@ diffing: every update resends the whole array instead of per-item paths.
 {items.value.map(t => <li key={t.id}>{t.text}</li>)} // ✓ path-precise
 ```
 
-## M1009 — call in a nested loop
+## M1009 — call three or more loop levels deep
 
-Calls inside nested loops would be hoisted into a page-scope derived that
-captures the outer loop variable out of scope. Precompute in frontmatter
-instead — e.g. a derived that maps the nested items to display-ready values.
+Calls one loop deep hoist per item (`_c` fields); calls two loops deep hoist
+too — the generated derived maps the outer list to nested mapped lists, and
+the inner `wx:for` binds `_hl<i>[outerIndex]`. Three or more loop levels is
+where hoisting stops: the derived would capture intermediate loop variables
+out of scope. Precompute in frontmatter instead — e.g. a derived that maps
+the nested items to display-ready values.
 
 ## M1010 — template syntax error
 
@@ -422,7 +425,14 @@ const when = state({ ts: 0 })
 format(when.value, 'yyyy')          // ✗ M1026 — reactive object crosses the boundary
 const ts = when.value.ts
 format(ts, 'yyyy')                  // ✓ plain local copy in, plain value out
+format(raw(when.value), 'yyyy')     // ✓ acknowledged — when is re-synced after the call
 ```
+
+Two fixes. Prefer the plain copy. When the library needs the live value,
+wrap it in `raw()` (imported from `'mist'`): the wrapper compiles away and
+the compiler conservatively re-syncs the whole wrapped root after the call —
+a full-value `setData` for that field (for unbound state, a derived
+recompute), so it costs a full serialization on every call.
 
 Return values are ordinary data — assign them to state freely. The check
 covers direct calls, including member calls (`dayjs.utc(...)`); routing a

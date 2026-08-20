@@ -223,14 +223,16 @@ Non-inlined components emit `"styleIsolation": "isolated"` by default; set
 `styleIsolation` in `config` to override, for example `'apply-shared'` to let
 page styles cascade in.
 
-**Component options — `virtualHost`, `pureDataPattern`, `externalClasses`:**
-component-only `config` keys, compiler-only (never reach the emitted `.json`):
+**Component options — `virtualHost`, `pureDataPattern`, `externalClasses`,
+`behaviors`:** component-only `config` keys, compiler-only (never reach the
+emitted `.json`):
 
 ```jsx
 export const config = {
   virtualHost: true,
   pureDataPattern: '^_',
   externalClasses: ['x-class'],
+  behaviors: ['wx://form-field'],
 }
 ```
 
@@ -248,7 +250,13 @@ export const config = {
   `<my-comp x-class="red-text" />` in the parent's template is plain WXML
   attribute passthrough — no special mist syntax. Each entry must be
   letters/digits/`-`/`_` only.
-- All three are component-only; using them in a page or `app.mist` is a
+- `behaviors: ['wx://form-field', ...]` attaches WeChat's built-in behaviors —
+  `wx://form-field` makes the component participate in `<form>` submit/reset,
+  `wx://form-field-group`, `wx://form-field-button` and
+  `wx://component-export` are the other built-ins. Only `wx://` behaviors are
+  accepted: a user-defined behavior is foreign code that can mutate `data`
+  outside the compiler's tracking, which breaks path-precise `setData`.
+- All four are component-only; using them in a page or `app.mist` is a
   compile error.
 
 **Bubbling callback events:** by default a callback event only reaches the
@@ -704,6 +712,23 @@ function f() {
 }
 ```
 
+When a copy is impractical — a big object, or the library must see the live
+value — wrap the argument in `raw()` to acknowledge the boundary:
+
+```ts
+import { raw } from 'mist'
+
+sortInPlace(raw(items.value))     // ✓ compiles; items is re-synced afterwards
+```
+
+`raw()` compiles away to nothing but tells the compiler you accept that the
+callee may mutate the value. In exchange the compiler conservatively re-syncs
+the whole wrapped root after the call — a full-value `setData` for that field
+(for unbound state, a derived recompute) instead of a path-precise write.
+Use it as the escape hatch it is: prefer the copy when
+the data is small, and expect the re-sync to cost a full serialization of the
+field on every call.
+
 Return values are plain data — assigning them to state is fine. The check
 covers direct calls (including member calls like `dayjs.utc(...)`); routing
 a reactive value through an alias or callback is the same untracked frontier
@@ -721,7 +746,8 @@ export const config = { trustedPackages: ['fuse.js'] }
 
 ## Not yet (roadmap — these error cleanly today)
 
-Calls in nested loops (M1009). Tab bar/window config:
+Calls three or more loop levels deep (M1009 — one and two levels hoist
+automatically). Tab bar/window config:
 put `tabBar` in `app.mist`'s `config` — no separate config file needed.
 
 TypeScript annotations (param/return types, `interface`, `type`, `as`,

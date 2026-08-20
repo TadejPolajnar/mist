@@ -27,6 +27,10 @@
 可选持久化：`store(init, { persist: 'key', version?: 1, migrate? })` 在创建时从 `wx.getStorageSync('key')` 恢复，变更后防抖（约 200 ms）写回，外层包一个 `{ v, data }` 信封。当保存的版本不同时，由 `migrate(oldData, oldVersion)` 生成新的数据结构（没有 `migrate` ⇒ 忽略保存的数据，使用 `init`）。存储错误被吞掉——持久化是尽力而为。注意 wx 存储配额（每键约 1 MB）。
 待写入的防抖数据会在 `wx.onAppHide` 时落盘；若在 200 ms 窗口内被强杀，最后一次变更仍可能丢失。
 
+### `raw(x)` → x（npm 边界逃生舱）
+
+包裹传给 npm 导入的响应式值，让 M1026 接受该调用：`sortInPlace(raw(items.value))`。编译后消失；调用后被包裹的根会被保守地重新同步（全量 `setData`；未绑定的 state 则重新计算 derived）。页面、组件和 store 模块中均可使用。
+
 ### 生命周期钩子
 
 在 frontmatter 顶层用箭头函数调用：`onLoad(({ id }) => { ... })`。

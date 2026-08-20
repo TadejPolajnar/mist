@@ -40,6 +40,13 @@ swallowed — persistence is best-effort. Mind wx storage quotas (~1 MB/key).
 A pending debounced write flushes on `wx.onAppHide`; a hard kill inside the
 200 ms window can still lose the last mutation.
 
+### `raw(x)` → x (npm boundary escape hatch)
+
+Wraps a reactive value passed to an npm import so M1026 accepts the call:
+`sortInPlace(raw(items.value))`. Compiles away; the wrapped root is
+conservatively re-synced after the call (full-value `setData`; a derived
+recompute for unbound state). Works in pages, components and store modules.
+
 ### Lifecycle hooks
 
 Call at frontmatter top level with an arrow: `onLoad(({ id }) => { ... })`.

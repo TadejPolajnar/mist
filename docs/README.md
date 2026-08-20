@@ -14,6 +14,7 @@ disagree, these docs are right.
 - **[Language guide](language.md)** — file anatomy, reactivity, templates, components, stores, styling
 - **[API reference](api.md)** — everything importable from `'mist'`, the CLI, emitted output
 - **[Testing](testing.md)** — `mistc test`: boot compiled pages in Node, assert on state and `setData` payload sizes
+- **[i18n](i18n.md)** — the locale-store pattern: runtime language switching with zero compiler magic
 - **[Diagnostics](diagnostics.md)** — every `M`-code, with fixes
 
 ## Getting started
