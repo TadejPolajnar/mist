@@ -43,12 +43,16 @@ enum Command {
             help = "Project root containing src/ and tests/ (not the src dir itself)"
         )]
         dir: PathBuf,
-        #[arg(long, help = "Only run test files whose name contains this substring")]
+        #[arg(long, help = "Only run test files (with --snapshots: emitted paths) containing this substring")]
         filter: Option<String>,
         #[arg(long, default_value_t = 30, help = "Per-file timeout in seconds")]
         timeout: u64,
         #[arg(long, help = "Rerun the tests when src/ or tests/ files change")]
         watch: bool,
+        #[arg(long, help = "Diff compiled output against snapshots/ goldens (first run writes them)")]
+        snapshots: bool,
+        #[arg(long, help = "Rewrite the snapshots/ goldens to match current output (implies --snapshots)")]
+        update: bool,
     },
 }
 
@@ -69,7 +73,21 @@ fn main() {
                 exit(1);
             }
         }
-        Command::Test { dir, filter, timeout, watch } => {
+        Command::Test { dir, filter, timeout, watch, snapshots, update } => {
+            if snapshots || update {
+                if watch {
+                    eprintln!("error: --snapshots does not combine with --watch — snapshot runs are one-shot");
+                    exit(1);
+                }
+                match run_snapshots(&dir, update, filter.as_deref()) {
+                    Ok(true) => return,
+                    Ok(false) => exit(1),
+                    Err(e) => {
+                        eprintln!("error: {}", e);
+                        exit(1);
+                    }
+                }
+            }
             if watch {
                 test_watch_loop(&dir, filter.as_deref(), timeout);
             }
@@ -183,6 +201,140 @@ fn test_watch_loop(dir: &Path, filter: Option<&str>, timeout_secs: u64) -> ! {
         let Ok(()) = rx.recv() else { continue };
         while rx.recv_timeout(Duration::from_millis(120)).is_ok() {}
         run("— rerunning tests");
+    }
+}
+
+fn collect_files(root: &Path, base: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(root) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with('.') {
+            continue;
+        }
+        if p.is_dir() {
+            collect_files(&p, base, out);
+        } else if let Ok(rel) = p.strip_prefix(base) {
+            out.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
+fn first_diff(golden: &str, current: &str) -> String {
+    let g: Vec<&str> = golden.lines().collect();
+    let c: Vec<&str> = current.lines().collect();
+    let mut i = 0;
+    while i < g.len() && i < c.len() && g[i] == c[i] {
+        i += 1;
+    }
+    let mut out = format!("    first difference at line {}:\n", i + 1);
+    for line in g.iter().skip(i).take(3) {
+        out.push_str(&format!("    - {}\n", line));
+    }
+    for line in c.iter().skip(i).take(3) {
+        out.push_str(&format!("    + {}\n", line));
+    }
+    out
+}
+
+fn run_snapshots(dir: &Path, update: bool, filter: Option<&str>) -> Result<bool, String> {
+    let src = dir.join("src");
+    if !src.join("app.mist").is_file() {
+        return Err(format!("{} has no src/app.mist — run from the project root", dir.display()));
+    }
+    let out = std::env::temp_dir().join(format!("mist-snap-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&out);
+    if !run_build_opt(&src, &out, false, true) {
+        let _ = fs::remove_dir_all(&out);
+        return Err("build failed".to_string());
+    }
+    let mut emitted = Vec::new();
+    collect_files(&out, &out, &mut emitted);
+    emitted.sort();
+    if let Some(f) = filter {
+        emitted.retain(|p| p.contains(f));
+    }
+
+    let snapdir = dir.join("snapshots");
+    let mut goldens = Vec::new();
+    if snapdir.is_dir() {
+        collect_files(&snapdir, &snapdir, &mut goldens);
+        goldens.sort();
+    }
+    let first_run = goldens.is_empty();
+    if let Some(f) = filter {
+        if emitted.is_empty() && !goldens.iter().any(|p| p.contains(f)) {
+            let _ = fs::remove_dir_all(&out);
+            return Err(format!("no emitted file or golden matches --filter '{}'", f));
+        }
+    }
+    if first_run || update {
+        let write = || -> Result<(), String> {
+            for rel in &goldens {
+                if filter.is_none() && !emitted.iter().any(|e| e == rel) {
+                    let _ = fs::remove_file(snapdir.join(rel));
+                    let mut parent = Path::new(rel).parent();
+                    while let Some(p) = parent {
+                        if p.as_os_str().is_empty() || fs::remove_dir(snapdir.join(p)).is_err() {
+                            break;
+                        }
+                        parent = p.parent();
+                    }
+                    println!("removed stale snapshot {}", rel);
+                }
+            }
+            for rel in &emitted {
+                let dest = snapdir.join(rel);
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                fs::copy(out.join(rel), &dest).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        };
+        let res = write();
+        let _ = fs::remove_dir_all(&out);
+        res?;
+        let label = if first_run { "written (first run)" } else { "updated" };
+        println!("{} snapshot(s) {} in {}", emitted.len(), label, snapdir.display());
+        return Ok(true);
+    }
+
+    if let Some(f) = filter {
+        goldens.retain(|p| p.contains(f));
+    }
+    let mut drift = 0;
+    for rel in &emitted {
+        let golden_path = snapdir.join(rel);
+        if !golden_path.is_file() {
+            println!("ADDED   {} (no golden — run --update to accept)", rel);
+            drift += 1;
+            continue;
+        }
+        let golden = fs::read(&golden_path).unwrap_or_default();
+        let current = fs::read(out.join(rel)).unwrap_or_default();
+        if golden != current {
+            println!("CHANGED {}", rel);
+            match (std::str::from_utf8(&golden), std::str::from_utf8(&current)) {
+                (Ok(g), Ok(c)) => print!("{}", first_diff(g, c)),
+                _ => println!("    binary contents differ"),
+            }
+            drift += 1;
+        }
+    }
+    for rel in &goldens {
+        if !emitted.iter().any(|e| e == rel) {
+            println!("REMOVED {} (golden exists but nothing was emitted)", rel);
+            drift += 1;
+        }
+    }
+    let _ = fs::remove_dir_all(&out);
+    if drift == 0 {
+        println!("{} snapshot(s) match", emitted.len());
+        Ok(true)
+    } else {
+        println!("{} file(s) drifted — review, then `mistc test --update` to accept", drift);
+        Ok(false)
     }
 }
 
@@ -585,6 +737,7 @@ fn init_project(name: &str) -> Result<(), String> {
     println!("next:");
     println!("  cd {} && mistc build src --watch", name);
     println!("  mistc test                   # run tests/*.test.js in a Node harness");
+    println!("  mistc test --snapshots       # pin emitted output against snapshots/");
     println!("  npm install                  # optional: wx.* types for your editor");
     println!("  WeChat DevTools → Import Project → select {}/", name);
     Ok(())

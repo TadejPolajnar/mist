@@ -509,3 +509,42 @@ fn npm_import_bundles_and_runs_end_to_end() {
     );
     assert!(String::from_utf8_lossy(&out.stdout).contains("1 passed, 0 failed"));
 }
+
+#[test]
+fn snapshot_mode_writes_diffs_and_updates() {
+    let dir = std::env::temp_dir().join("mist-cli-snapshots");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    let root = dir.join("app");
+
+    let out = Command::new(bin()).args(["test", "--snapshots"]).current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "first run failed:\n{}\n{}", stdout, String::from_utf8_lossy(&out.stderr));
+    assert!(stdout.contains("written (first run)"), "stdout:\n{}", stdout);
+    assert!(root.join("snapshots/app.json").is_file(), "goldens missing");
+
+    let out = Command::new(bin()).args(["test", "--snapshots"]).current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success() && stdout.contains("snapshot(s) match"), "stdout:\n{}", stdout);
+
+    let page = root.join("src/pages/index.mist");
+    let src = std::fs::read_to_string(&page).unwrap();
+    assert!(src.contains("Add todo"), "scaffold changed — pick a new drift edit");
+    std::fs::write(&page, src.replace("Add todo", "Add task")).unwrap();
+    let out = Command::new(bin()).args(["test", "--snapshots"]).current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!out.status.success(), "drift must exit nonzero:\n{}", stdout);
+    assert!(stdout.contains("CHANGED") && stdout.contains("first difference"), "stdout:\n{}", stdout);
+
+    let out = Command::new(bin()).args(["test", "--update"]).current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success() && stdout.contains("updated"), "stdout:\n{}", stdout);
+    let out = Command::new(bin()).args(["test", "--snapshots"]).current_dir(&root).output().unwrap();
+    assert!(out.status.success(), "post-update mismatch:\n{}", String::from_utf8_lossy(&out.stdout));
+
+    let out = Command::new(bin()).args(["test", "--snapshots", "--watch"]).current_dir(&root).output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("does not combine"), "stderr must explain");
+}
