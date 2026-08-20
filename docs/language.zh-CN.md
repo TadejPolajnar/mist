@@ -342,12 +342,15 @@ export const config = {
   scoped——它天然就是全局的。
 - **`<style global>`** 是反方向的选择：样式块被提升进 `app.wxss` 而不是
   单元自己的 `.wxss`，规则应用于整个应用。用在组件上时，默认
-  `styleIsolation` 同时改为 `'apply-shared'`（`config` 中显式声明的
-  `styleIsolation` 仍然优先）——否则微信的样式隔离会挡住组件自己那些
-  已提升到 app 层的规则。适用场景：内联组件刻意为父级/插槽内容提供
-  样式，或组件主动接入页面级 CSS。同一个块上同时写 `scoped` 和
-  `global` 是错误；`app.mist` 会拒绝该属性（它的样式本来就是全局的）。
-  单文件构建没有 `app.wxss`——此时样式块保留在单元自己的产物中。
+  `styleIsolation` 同时改为 `'apply-shared'`——否则微信的样式隔离会挡住
+  组件自己那些已提升到 app 层的规则。`config` 中显式声明的
+  `styleIsolation` 仍然优先，但 `'isolated'` 与 `global` 同用是编译
+  错误：隔离会把已提升的规则挡在组件之外，让它们死在 `app.wxss` 里。
+  适用场景：内联组件刻意为父级/插槽内容提供样式，或组件主动接入页面级
+  CSS。同一个块上同时写 `scoped` 和 `global` 是错误，`<style>` 上的
+  未知属性（包括拼写错误）也是错误；`app.mist` 会拒绝该属性（它的样式
+  本来就是全局的）。单文件构建没有 `app.wxss`——此时样式块保留在单元
+  自己的产物中，隔离默认值也不改变。
 - `app.mist` 的 `<style>` 成为 `app.wxss`（全局；`page { … }` 在那里有效）。
 - **设计令牌**——把 `src/theme.css` 放在 `app.mist` 旁边，为整个项目
   定义 Tailwind v4 令牌和自定义工具类：

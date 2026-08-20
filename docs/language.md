@@ -439,14 +439,17 @@ in the compiler's metadata table are checked, and `config.customAttrs`
 - **`<style global>`** is the opposite opt-out: the block is hoisted into
   `app.wxss` instead of the unit's own `.wxss`, so its rules apply app-wide.
   On a component this also flips the default `styleIsolation` to
-  `'apply-shared'` (an explicit `styleIsolation` in `config` still wins) —
-  without that, WeChat's isolation would block the component's own
-  now-app-level rules from reaching it. Use it for an inlined component that
-  deliberately styles parent/slotted content, or a component opting into
-  page-level CSS. `scoped` and `global` on one block is an error, and
+  `'apply-shared'` — without that, WeChat's isolation would block the
+  component's own now-app-level rules from reaching it. An explicit
+  `styleIsolation` in `config` still wins, except `'isolated'`, which is a
+  compile error with `global`: it would shut the hoisted rules out of the
+  component, leaving them dead in `app.wxss`. Use it for an inlined
+  component that deliberately styles parent/slotted content, or a component
+  opting into page-level CSS. `scoped` and `global` on one block is an
+  error, unknown `<style>` attributes (typos included) are errors, and
   `app.mist` rejects the attribute (its style is already global).
   Single-file builds have no `app.wxss` — the block stays in the unit's own
-  output there.
+  output there, and the isolation default is untouched.
 - `app.mist`'s `<style>` becomes `app.wxss` (global; `page { … }` is valid there).
 - **Design tokens** — place `src/theme.css` next to `app.mist` to define
   Tailwind v4 tokens and custom utilities for the whole project:

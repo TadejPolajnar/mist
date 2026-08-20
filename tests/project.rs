@@ -1352,3 +1352,48 @@ fn style_scoped_and_global_together_error() {
     let err = mistc::compile(src).unwrap_err();
     assert!(err.contains("both scoped and global"), "err: {}", err);
 }
+
+#[test]
+fn style_global_with_explicit_isolated_errors() {
+    let dir = std::env::temp_dir().join("mist-style-global-isolated");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nimport Badge from '../components/badge.mist'\nconst n = state(0)\n---\n<div><Badge label=\"hi\" /><span>{n.value}</span></div>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/badge.mist"),
+        "---\nimport { state, props } from 'mist'\nconst { label } = props({ label: '' })\nconst hits = state(0)\nfunction bump() { hits.value++ }\nexport const config = { styleIsolation: 'isolated' }\n---\n<span class=\"badge\" onTap={bump}>{label} {hits.value}</span>\n<style global>\n.badge { color: red; }\n</style>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("styleIsolation 'isolated'") && err.contains("help:"), "err: {}", err);
+}
+
+#[test]
+fn style_global_flat_build_keeps_isolated_default() {
+    let src = "---\nimport { state, props } from 'mist'\nconst { label } = props({ label: '' })\nconst hits = state(0)\nfunction bump() { hits.value++ }\n---\n<span class=\"badge\" onTap={bump}>{label} {hits.value}</span>\n<style global>\n.badge { color: red; }\n</style>\n";
+    let unit = mistc::compile_unit(src, false).expect("compile failed");
+    let json = unit.output.json.as_ref().unwrap();
+    assert!(json.contains("\"styleIsolation\": \"isolated\""), "json: {}", json);
+    assert!(unit.output.wxss.contains(".badge"), "wxss:\n{}", unit.output.wxss);
+}
+
+#[test]
+fn style_tag_rejects_unknown_attrs_and_missing_space() {
+    let base = "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n";
+    let err = mistc::compile(&format!("{}<style globl>\n.x {{ color: red; }}\n</style>\n", base)).unwrap_err();
+    assert!(err.contains("unknown <style> attribute 'globl'"), "err: {}", err);
+    let err = mistc::compile(&format!("{}<style GLOBAL>\n.x {{ color: red; }}\n</style>\n", base)).unwrap_err();
+    assert!(err.contains("unknown <style> attribute 'GLOBAL'"), "err: {}", err);
+    let err = mistc::compile(&format!("{}<styleglobal>\n.x {{ color: red; }}\n</style>\n", base)).unwrap_err();
+    assert!(err.contains("malformed <style> tag"), "err: {}", err);
+}

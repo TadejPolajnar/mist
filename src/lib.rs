@@ -483,7 +483,12 @@ fn compile_unit_full_route(
     let effective_min_lib = analysis.min_lib_version.as_deref().or(project_min_lib);
     warnings.extend(meta_warning_texts(&wxml_out, &analysis.custom_attrs, effective_min_lib));
 
-    let json = build_json(analysis.config.as_deref(), &using, is_page, sfc.style_global)?;
+    let json = build_json(
+        analysis.config.as_deref(),
+        &using,
+        is_page,
+        sfc.style_global && matches!(layout, Layout::Nested),
+    )?;
 
     // inlined children render inside this unit — import their template partials
     let mut wxml = String::new();
@@ -1541,6 +1546,15 @@ fn build_json(
         }
         let json = frontmatter::config_literal_to_json(config)?;
         let inner = object_inner(&json).to_string();
+        if style_global
+            && !is_page
+            && (inner.contains("\"styleIsolation\": \"isolated\"")
+                || inner.contains("\"styleIsolation\": \"page-isolated\""))
+        {
+            return Err(
+                "config.styleIsolation 'isolated' blocks this component's own <style global> rules — they move to app.wxss, which isolation shuts out\n  help: use 'apply-shared' or 'shared', or drop the global attribute".to_string(),
+            );
+        }
         if !inner.is_empty() {
             fields.push(inner);
         }

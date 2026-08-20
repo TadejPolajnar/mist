@@ -34,6 +34,14 @@ pub fn split(source: &str) -> Result<Sfc<'_>, String> {
             let open_end = style_block.find('>').ok_or("malformed <style> tag")?;
             let close = style_block.find("</style>").ok_or("missing </style>")?;
             let attrs = &style_block[6..open_end];
+            if !attrs.is_empty() && !attrs.starts_with(char::is_whitespace) {
+                return Err("malformed <style> tag — expected <style>, <style scoped> or <style global>".to_string());
+            }
+            for a in attrs.split_whitespace() {
+                if a != "scoped" && a != "global" {
+                    return Err(format!("unknown <style> attribute '{}' — supported: scoped, global", a));
+                }
+            }
             let scoped = attrs.split_whitespace().any(|a| a == "scoped");
             let global = attrs.split_whitespace().any(|a| a == "global");
             if scoped && global {
