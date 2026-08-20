@@ -1329,3 +1329,64 @@ fn trusted_packages_rejected_outside_app_mist() {
     let err = mistc::compile(src).unwrap_err();
     assert!(err.contains("trustedPackages") && err.contains("app.mist"), "err: {}", err);
 }
+
+#[test]
+fn raw_wrapping_suppresses_m1026_and_resyncs_bound_state() {
+    let src = "---\nimport { state, raw } from 'mist'\nimport mutate from 'mutator'\nconst when = state({ ts: 0 })\nfunction f() {\n  mutate(raw(when.value))\n}\n---\n<span onTap={f}>{when.value.ts}</span>\n";
+    let out = mistc::compile(src).expect("raw must suppress M1026");
+    assert!(
+        out.js.contains("mutate((this.__set('when', this.data.when), this.data.when))"),
+        "js:\n{}",
+        out.js
+    );
+}
+
+#[test]
+fn raw_resyncs_unbound_state_via_touch() {
+    let src = "---\nimport { state, derived, raw } from 'mist'\nimport mutate from 'mutator'\nconst items = state([1])\nconst count = derived(() => items.value.length)\nfunction f() {\n  mutate(raw(items.value))\n}\n---\n<span onTap={f}>{count.value}</span>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(
+        out.js.contains("mutate((rt.touch(this, 'items'), this._items))"),
+        "js:\n{}",
+        out.js
+    );
+}
+
+#[test]
+fn raw_resyncs_store_mirrors_whole_value() {
+    let src = "---\nimport { raw } from 'mist'\nimport mutate from 'mutator'\nimport { cart } from './stores/cart.ts'\nfunction f() {\n  mutate(raw(cart.value))\n}\n---\n<span onTap={f}>{cart.value.n}</span>\n";
+    let resolver = |_: &str| {
+        Some(mistc::frontmatter::StoreModuleInfo {
+            stores: vec!["cart".to_string()],
+            fns: vec![],
+            npm_packages: vec![],
+        })
+    };
+    let unit = mistc::compile_unit_with_stores(src, true, &resolver).expect("compile failed");
+    assert!(
+        unit.output.js.contains("mutate((__S0.cart.__set(null, __S0.cart.value), __S0.cart.value))"),
+        "js:\n{}",
+        unit.output.js
+    );
+}
+
+#[test]
+fn nested_loop_calls_lift_to_outer_indexed_derived() {
+    let src = "---\nimport { state } from 'mist'\nconst groups = state([{ name: 'a', items: [{ id: 1, ts: 0 }] }])\nfunction fmt(ts) { return '' + ts }\n---\n<div>{groups.value.map(g => (<div key={g.name}>{g.items.map(it => (<span key={it.id}>{fmt(it.ts)} in {g.name}</span>))}</div>))}</div>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(out.wxml.contains("wx:for=\"{{_hl0[index]}}\""), "wxml:\n{}", out.wxml);
+    assert!(out.wxml.contains("{{it._c0}}"), "wxml:\n{}", out.wxml);
+    assert!(
+        out.js.contains("rt.derive(this, __o, '_hl0', 'id', () => (this.data.groups).map((g, index) => (g.items).map(it => ({ ...it, _c0: this.fmt(it.ts) }))), ['groups'])"),
+        "js:\n{}",
+        out.js
+    );
+}
+
+#[test]
+fn nested_loop_lift_uses_declared_outer_index() {
+    let src = "---\nimport { state } from 'mist'\nconst groups = state([])\nfunction fmt(ts) { return '' + ts }\n---\n<div>{groups.value.map((g, gi) => (<div key={g.name}>{g.items.map(it => (<span key={it.id}>{fmt(it.ts)}</span>))}</div>))}</div>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(out.wxml.contains("wx:for=\"{{_hl0[gi]}}\""), "wxml:\n{}", out.wxml);
+    assert!(out.js.contains(".map((g, gi) => (g.items).map(it =>"), "js:\n{}", out.js);
+}

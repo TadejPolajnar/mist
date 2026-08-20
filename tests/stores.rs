@@ -218,3 +218,13 @@ fn store_option_mutations_compile_to_path_writes() {
     .expect("compile failed");
     assert!(js.contains("other.__set(`n`, 1)"), "js:\n{}", js);
 }
+
+#[test]
+fn raw_in_store_module_resyncs_local_store() {
+    let (js, _) = mistc::frontmatter::compile_store_module(
+        "import { store, raw } from 'mist'\nexport const cart = store({ items: [] })\nexport function sync(m) { m(raw(cart.value)) }\n",
+        "./mist-rt.js",
+    )
+    .expect("compile failed");
+    assert!(js.contains("m((cart.__set(null, cart.value), cart.value))"), "js:\n{}", js);
+}

@@ -312,3 +312,29 @@ fn external_classes_bad_entry_errors() {
     };
     assert!(err.contains("externalClasses"), "err: {}", err);
 }
+
+#[test]
+fn wx_behaviors_emit_into_component_and_stay_out_of_json() {
+    let src = "---\nimport { props } from 'mist'\nconst { value } = props({ value: '' })\nexport const config = { behaviors: ['wx://form-field'] }\n---\n<span>{value}</span>\n";
+    let unit = mistc::compile_unit(src, false).expect("compile failed");
+    assert!(unit.output.js.contains("behaviors: ['wx://form-field'],"), "js:\n{}", unit.output.js);
+    let json = unit.output.json.as_deref().unwrap_or("");
+    assert!(!json.contains("behaviors"), "json: {}", json);
+}
+
+#[test]
+fn user_behaviors_are_rejected_with_reason() {
+    let src = "---\nimport { props } from 'mist'\nconst { value } = props({ value: '' })\nexport const config = { behaviors: ['my-behavior'] }\n---\n<span>{value}</span>\n";
+    let err = match mistc::compile_unit(src, false) {
+        Err(e) => e,
+        Ok(_) => panic!("user behaviors must be rejected"),
+    };
+    assert!(err.contains("wx://") && err.contains("my-behavior"), "err: {}", err);
+}
+
+#[test]
+fn behaviors_rejected_on_pages() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { behaviors: ['wx://form-field'] }\n---\n<span>{n.value}</span>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("component-only"), "err: {}", err);
+}

@@ -645,3 +645,32 @@ console.log('SAFE');
     );
     assert_eq!(out, "SAFE");
 }
+
+#[test]
+fn nested_hoist_rows_skip_unchanged_and_rewrite_changed() {
+    let out = run_node(
+        r#"
+const calls = [];
+const page = {
+  data: { groups: [{ items: [{ id: 1, ts: 0 }] }, { items: [{ id: 2, ts: 0 }] }], _hl0: null },
+  setData(o) { calls.push(o); },
+  __derive() {
+    const __o = {};
+    rt.derive(this, __o, '_hl0', 'id', () => this.data.groups.map((g, index) => g.items.map(it => ({ ...it, _c0: 'v' + it.ts }))), ['groups']);
+    return __o;
+  },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('groups[1].items[0].ts', 9);
+setTimeout(() => {
+  const last = calls[calls.length - 1];
+  const keys = Object.keys(last);
+  if (keys.some(k => k === '_hl0' || k === '_hl0[0]')) throw new Error('unchanged row rewritten: ' + JSON.stringify(last));
+  if (!last['_hl0[1]'] || last['_hl0[1]'][0]._c0 !== 'v9') throw new Error('changed row not rewritten: ' + JSON.stringify(last));
+  console.log('OK');
+}, 0);
+"#,
+    );
+    assert_eq!(out, "OK");
+}

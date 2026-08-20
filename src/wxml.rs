@@ -48,6 +48,9 @@ pub struct ForHoist {
     pub param: String,
     pub key: Option<String>,
     pub fields: Vec<String>,
+    /// enclosing loop (list, param, index name) when this hoist was lifted out
+    /// of a nested `wx:for` — the derived maps the outer list to nested lists
+    pub outer: Option<(String, String, String)>,
 }
 
 struct Ctx {
@@ -65,6 +68,7 @@ struct Ctx {
     rewrites: Vec<(String, String)>,
     call_re: Regex,
     loop_params: Vec<String>,
+    loop_frames: Vec<(String, String, String)>,
     unknown_tags: Vec<(String, Option<String>)>,
     meta_warnings: Vec<MetaWarning>,
     since_hits: Vec<(String, String, String)>,
@@ -95,6 +99,7 @@ pub fn emit(
         rewrites: Vec::new(),
         call_re: Regex::new(r"[A-Za-z0-9_\]]\s*\(").map_err(|e| e.to_string())?,
         loop_params: Vec::new(),
+        loop_frames: Vec::new(),
         unknown_tags: Vec::new(),
         meta_warnings: Vec::new(),
         since_hits: Vec::new(),
@@ -220,9 +225,9 @@ fn emit_node(node: &Node, ctx: &mut Ctx, out: &mut String, indent: usize) -> Res
             // computed `_c<i>` fields on a generated derived list
             let mut fields: Vec<String> = Vec::new();
             collect_item_calls(children, param, &ctx.call_re, &mut fields);
-            if !fields.is_empty() && !ctx.loop_params.is_empty() {
+            if !fields.is_empty() && ctx.loop_frames.len() > 1 {
                 return Err(format!(
-                    "M1009: call `{}` in a nested loop cannot be hoisted — the generated derived would capture `{}` outside its scope\n  help: precompute the values in frontmatter (e.g. a derived mapping the nested items)",
+                    "M1009: call `{}` three loop levels deep cannot be hoisted — the generated derived would capture `{}` outside its scope\n  help: precompute the values in frontmatter (e.g. a derived mapping the nested items)",
                     fields[0],
                     ctx.loop_params.join("`, `")
                 ));
@@ -234,14 +239,20 @@ fn emit_node(node: &Node, ctx: &mut Ctx, out: &mut String, indent: usize) -> Res
                 for (i, f) in fields.iter().enumerate() {
                     ctx.rewrites.push((f.clone(), format!("{}._c{}", param, i)));
                 }
+                let outer = ctx.loop_frames.first().cloned();
+                let binding = match &outer {
+                    Some((_, _, oindex)) => format!("{}[{}]", name, oindex),
+                    None => name.clone(),
+                };
                 ctx.for_hoists.push(ForHoist {
-                    name: name.clone(),
+                    name,
                     list: list.clone(),
                     param: param.clone(),
                     key: key.clone(),
                     fields: fields.clone(),
+                    outer,
                 });
-                (name, fields.len())
+                (binding, fields.len())
             };
             let index_attr = match index {
                 Some(i) => format!(" wx:for-index=\"{}\"", i),
@@ -255,7 +266,13 @@ fn emit_node(node: &Node, ctx: &mut Ctx, out: &mut String, indent: usize) -> Res
             if let Some(i) = index {
                 ctx.loop_params.push(i.clone());
             }
+            ctx.loop_frames.push((
+                list.clone(),
+                param.clone(),
+                index.clone().unwrap_or_else(|| "index".to_string()),
+            ));
             let inner = emit_nodes(children, ctx, out, indent + 1);
+            ctx.loop_frames.pop();
             ctx.loop_params.pop();
             if index.is_some() {
                 ctx.loop_params.pop();

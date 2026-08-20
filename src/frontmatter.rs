@@ -50,6 +50,8 @@ pub struct Analysis {
     pub pure_data_pattern: Option<String>,
     /// `config.externalClasses` — component-only; parent-styleable class names
     pub external_classes: Vec<String>,
+    /// `config.behaviors` — component-only; WeChat built-in `wx://` behaviors only
+    pub behaviors: Vec<String>,
     /// `navigate(...)`/`navigate.replace/switchTab(...)` call sites with literal
     /// routes — validated against the project's route set once it exists (M1021)
     pub route_refs: Vec<RouteRef>,
@@ -165,7 +167,7 @@ const RETURNING_HOOKS: &[&str] =
 const PAGE_LIFETIME_HOOKS: &[(&str, &str)] =
     &[("onPageShow", "show"), ("onPageHide", "hide"), ("onResize", "resize")];
 
-const MIST_VALUE_EXPORTS: &[&str] = &["state", "derived", "store", "props", "navigate"];
+const MIST_VALUE_EXPORTS: &[&str] = &["state", "derived", "store", "props", "navigate", "raw"];
 
 /// A `navigate(...)`-family call site collected during analysis for late
 /// (project-level) route validation — the route set only exists once every
@@ -931,6 +933,39 @@ pub fn analyze_with_stores_bound(
     if !collector.errors.is_empty() {
         return Err(collector.errors.join("; "));
     }
+    {
+        let mut reactive: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for st in &states {
+            reactive.insert(st.name.clone());
+        }
+        for (name, _) in &deriveds {
+            reactive.insert(name.clone());
+        }
+        let mut store_alias: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for si in &store_imports {
+            for name in &si.stores {
+                reactive.insert(name.clone());
+                store_alias.insert(name.clone(), si.alias.clone());
+            }
+        }
+        let bound: std::collections::HashMap<String, bool> =
+            states.iter().map(|st| (st.name.clone(), st.bound)).collect();
+        let resync_of = |name: &str| -> Option<RawResync> {
+            if let Some(alias) = store_alias.get(name) {
+                return Some(RawResync::StoreMirror { alias: alias.clone() });
+            }
+            match bound.get(name) {
+                Some(true) => Some(RawResync::BoundState),
+                Some(false) => Some(RawResync::Unbound),
+                None => Some(RawResync::Unbound),
+            }
+        };
+        let mut raw_pass =
+            RawRewrite { resync_of: &resync_of, reactive: &reactive, edits: Vec::new() };
+        raw_pass.visit_program(&program);
+        collector.edits.extend(raw_pass.edits);
+    }
 
     // M1017: `created` runs before `properties`/`data` exist on the instance —
     // any state write in onCreate's callback would target an object that isn't there yet.
@@ -1119,6 +1154,7 @@ pub fn analyze_with_stores_bound(
         virtual_host: component_options.virtual_host,
         pure_data_pattern: component_options.pure_data_pattern,
         external_classes: component_options.external_classes,
+        behaviors: component_options.behaviors,
         route_refs,
     })
 }
@@ -1404,7 +1440,7 @@ fn split_component_options_config(raw: &str) -> Result<(Option<String>, Option<S
     let Expression::ObjectExpression(obj) = unparenthesize(&es.expression) else {
         return Ok((None, Some(raw.to_string())));
     };
-    const KEYS: &[&str] = &["virtualHost", "pureDataPattern", "externalClasses"];
+    const KEYS: &[&str] = &["virtualHost", "pureDataPattern", "externalClasses", "behaviors"];
     let mut found: Vec<String> = Vec::new();
     let mut kept: Vec<String> = Vec::new();
     for p in &obj.properties {
@@ -1438,6 +1474,7 @@ struct ComponentOptions {
     virtual_host: Option<bool>,
     pure_data_pattern: Option<String>,
     external_classes: Vec<String>,
+    behaviors: Vec<String>,
 }
 
 fn component_options_config_entries(raw: &str) -> Result<ComponentOptions, String> {
@@ -1480,6 +1517,25 @@ fn component_options_config_entries(raw: &str) -> Result<ComponentOptions, Strin
                     );
                 }
                 out.pure_data_pattern = Some(pattern);
+            }
+            "behaviors" => {
+                let Expression::ArrayExpression(arr) = unparenthesize(&op.value) else {
+                    return Err("config.behaviors must be an array literal".to_string());
+                };
+                for el in &arr.elements {
+                    let e = el.as_expression().ok_or("config.behaviors must hold string literals")?;
+                    let Expression::StringLiteral(value) = unparenthesize(e) else {
+                        return Err("config.behaviors must hold string literals".to_string());
+                    };
+                    let value = value.value.to_string();
+                    if !value.starts_with("wx://") {
+                        return Err(format!(
+                            "config.behaviors['{}'] — only WeChat's built-in 'wx://' behaviors are supported; user behaviors are foreign code the compiler cannot track mutations through",
+                            value
+                        ));
+                    }
+                    out.behaviors.push(value);
+                }
             }
             "externalClasses" => {
                 let Expression::ArrayExpression(arr) = unparenthesize(&op.value) else {
@@ -2029,6 +2085,11 @@ pub fn emit_js_route(
     if !options.is_empty() {
         out.push_str(&format!("  options: {{ {} }},\n", options.join(", ")));
     }
+    if !analysis.behaviors.is_empty() {
+        let items: Vec<String> =
+            analysis.behaviors.iter().map(|b| format!("'{}'", b)).collect();
+        out.push_str(&format!("  behaviors: [{}],\n", items.join(", ")));
+    }
     if !analysis.external_classes.is_empty() {
         let classes: Vec<String> =
             analysis.external_classes.iter().map(|c| format!("\"{}\"", c)).collect();
@@ -2243,7 +2304,15 @@ pub fn compile_store_module_vendored(
     if !collector.errors.is_empty() {
         return Err(collector.errors.join("; "));
     }
-    let edits = collector.edits;
+    let mut edits = collector.edits;
+    {
+        let reactive: std::collections::HashSet<String> = info.stores.iter().cloned().collect();
+        let resync_of = |_name: &str| -> Option<RawResync> { Some(RawResync::StoreLocal) };
+        let mut raw_pass =
+            RawRewrite { resync_of: &resync_of, reactive: &reactive, edits: Vec::new() };
+        raw_pass.visit_program(&program);
+        edits.extend(raw_pass.edits);
+    }
 
     let apply = |span: Span| -> String {
         let start = span.start;
@@ -2652,13 +2721,23 @@ pub fn hoisted_deriveds(
             .enumerate()
             .map(|(i, f)| format!("_c{}: {}", i, rw.rewrite_reads(f)))
             .collect();
-        let arrow = format!(
-            "() => ({}).map({} => ({{ ...{}, {} }}))",
+        let inner_map = format!(
+            "({}).map({} => ({{ ...{}, {} }}))",
             rw.rewrite_reads(&fh.list),
             fh.param,
             fh.param,
             fields.join(", ")
         );
+        let arrow = match &fh.outer {
+            Some((olist, oparam, oindex)) => format!(
+                "() => ({}).map(({}, {}) => {})",
+                rw.rewrite_reads(olist),
+                oparam,
+                oindex,
+                inner_map
+            ),
+            None => format!("() => {}", inner_map),
+        };
         out.push((DerivedDecl { name: fh.name.clone(), arrow }, fh.key.clone()));
     }
     Ok(out)
@@ -3454,6 +3533,67 @@ impl<'a> Visit<'a> for ReactiveFinder<'_> {
     }
 }
 
+/// What a `raw()`-wrapped reactive root resyncs to after the opaque call.
+pub enum RawResync {
+    BoundState,
+    Unbound,
+    StoreMirror { alias: String },
+    StoreLocal,
+}
+
+struct RawRewrite<'r> {
+    resync_of: &'r dyn Fn(&str) -> Option<RawResync>,
+    reactive: &'r std::collections::HashSet<String>,
+    edits: Vec<Edit>,
+}
+
+impl<'a> Visit<'a> for RawRewrite<'_> {
+    fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        if let Expression::Identifier(id) = &it.callee {
+            if id.name == "raw" && it.arguments.len() == 1 {
+                if let Some(arg) = it.arguments[0].as_expression() {
+                    let mut finder = ReactiveFinder { reactive: self.reactive, found: None };
+                    finder.visit_expression(arg);
+                    let mut prefix = String::from("(");
+                    if let Some(name) = finder.found {
+                        if let Some(kind) = (self.resync_of)(&name) {
+                            let stmt = match kind {
+                                RawResync::BoundState => format!(
+                                    "this.__set('{n}', this.data.{n}), ",
+                                    n = name
+                                ),
+                                RawResync::Unbound => format!("rt.touch(this, '{}'), ", name),
+                                RawResync::StoreMirror { alias } => format!(
+                                    "{a}.{n}.__set(null, {a}.{n}.value), ",
+                                    a = alias,
+                                    n = name
+                                ),
+                                RawResync::StoreLocal => format!(
+                                    "{n}.__set(null, {n}.value), ",
+                                    n = name
+                                ),
+                            };
+                            prefix.push_str(&stmt);
+                        }
+                    }
+                    let arg_span = arg.span();
+                    self.edits.push(Edit {
+                        start: it.span.start,
+                        end: arg_span.start,
+                        text: prefix,
+                    });
+                    self.edits.push(Edit {
+                        start: arg_span.end,
+                        end: it.span.end,
+                        text: ")".to_string(),
+                    });
+                }
+            }
+        }
+        walk::walk_call_expression(self, it);
+    }
+}
+
 struct NpmBoundaryCheck<'r> {
     npm_locals: &'r std::collections::HashSet<String>,
     reactive: &'r std::collections::HashSet<String>,
@@ -3466,6 +3606,11 @@ impl<'a> Visit<'a> for NpmBoundaryCheck<'_> {
             if let Some(root) = callee_root_name(&it.callee) {
                 if self.npm_locals.contains(&root) {
                     for arg in &it.arguments {
+                        if let Some(Expression::CallExpression(c)) = arg.as_expression().map(unparenthesize) {
+                            if matches!(&c.callee, Expression::Identifier(id) if id.name == "raw") {
+                                continue;
+                            }
+                        }
                         let mut finder = ReactiveFinder { reactive: self.reactive, found: None };
                         match arg {
                             Argument::SpreadElement(spread) => {

@@ -295,6 +295,9 @@ fn compile_unit_full_route(
         if analysis.pure_data_pattern.is_some() {
             return Err("'pureDataPattern' is component-only config".to_string());
         }
+        if !analysis.behaviors.is_empty() {
+            return Err("'behaviors' is component-only config".to_string());
+        }
         if !analysis.external_classes.is_empty() {
             return Err("'externalClasses' is component-only config".to_string());
         }
@@ -1026,6 +1029,9 @@ fn compile_app(
     }
     if analysis.pure_data_pattern.is_some() {
         return Err("app.mist: 'pureDataPattern' is component-only config".to_string());
+    }
+    if !analysis.behaviors.is_empty() {
+        return Err("app.mist: 'behaviors' is component-only config".to_string());
     }
     if !analysis.external_classes.is_empty() {
         return Err("app.mist: 'externalClasses' is component-only config".to_string());

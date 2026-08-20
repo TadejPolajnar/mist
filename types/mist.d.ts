@@ -24,6 +24,11 @@ declare module 'mist' {
    * Without the generic the result is an open record.
    */
   export function props<T extends object = Record<string, any>>(defaults?: object): T
+  /**
+   * Acknowledges an npm boundary (M1026): pass reactive state into foreign code.
+   * The compiler conservatively re-syncs the value after the call.
+   */
+  export function raw<T>(x: T): T
 
   export function onLaunch(fn: (options?: Record<string, unknown>) => void): void
 

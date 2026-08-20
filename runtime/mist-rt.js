@@ -230,11 +230,23 @@ function derive(page, out, name, key, compute, deps) {
     if (!sameShape) {
       out[name] = next;
       wrote = true;
-      for (let i = 0; i < next.length; i++) snap[i] = snapshot(next[i]);
+      for (let i = 0; i < next.length; i++) snap[i] = snapRow(next[i]);
     } else {
       for (let i = 0; i < next.length; i++) {
         const p = prev[i];
         const n = next[i];
+        // nested-hoist rows (_hl over a nested loop) are arrays rebuilt every
+        // recompute — compare items, not the always-fresh row reference
+        if (Array.isArray(n)) {
+          if (Array.isArray(p) && p.length === n.length && n.every((v, j) => shallowEq(p[j], v))) {
+            snap[i] = p;
+            continue;
+          }
+          snap[i] = snapRow(n);
+          out[name + '[' + i + ']'] = n;
+          wrote = true;
+          continue;
+        }
         if (shallowEq(p, n)) {
           snap[i] = p;
           continue;
@@ -307,6 +319,11 @@ function shallowEq(a, b) {
 function snapshot(v) {
   if (v && typeof v === 'object' && !Array.isArray(v)) return Object.assign({}, v);
   return v;
+}
+
+function snapRow(v) {
+  if (Array.isArray(v)) return v.map(snapshot);
+  return snapshot(v);
 }
 
 /**

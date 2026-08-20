@@ -178,8 +178,8 @@ fn m1026_reactive_value_into_npm_import_errors() {
 }
 
 #[test]
-fn m1009_call_in_nested_loop_errors() {
-    let src = "---\nimport { state } from 'mist'\nconst groups = state([])\nfunction fmt(s) { return s }\n---\n<div>{groups.value.map(g => (<div key={g.id}>{g.items.map(it => (<span key={it.id}>{fmt(it.name)}</span>))}</div>))}</div>\n";
+fn m1009_call_in_doubly_nested_loop_errors() {
+    let src = "---\nimport { state } from 'mist'\nconst groups = state([])\nfunction fmt(s) { return s }\n---\n<div>{groups.value.map(g => (<div key={g.id}>{g.subs.map(s => (<div key={s.id}>{s.items.map(it => (<span key={it.id}>{fmt(it.name)}</span>))}</div>))}</div>))}</div>\n";
     let err = mistc::compile(src).unwrap_err();
     assert!(err.contains("M1009"), "err: {}", err);
     assert!(err.contains("help:"), "err: {}", err);
