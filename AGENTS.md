@@ -257,10 +257,11 @@ rebinds cancel, covers for-of and iterator-callback params).
 
 **Design-only (do not assume these exist):** static *subtree*
 hoisting (§8.4 — distinct from §4.2 expression hoisting, which ships);
-`mist.config.ts` as a file; `<style global>`
-(`<style scoped>` ships — per-unit `--<name>` suffixing in `src/scope.rs`);
-`mist trace`; package-size budgets;
-snapshot testing; hoisting inside nested loops.
+`mist.config.ts` as a file; `mist trace`; package-size budgets;
+snapshot testing. Now shipped, don't re-add here: `<style scoped>`
+(per-unit `--<name>` suffixing in `src/scope.rs`), `<style global>`
+(hoists to app.wxss, flips component default styleIsolation to
+apply-shared, directory builds only), nested-loop hoisting (1–2 levels).
 
 `navigate()` **is implemented** (plan 026): `import { navigate } from 'mist'`
 compiles `navigate(route, params?)` / `.replace` / `.back` / `.switchTab` to

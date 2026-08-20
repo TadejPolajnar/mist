@@ -436,6 +436,17 @@ in the compiler's metadata table are checked, and `config.customAttrs`
   (e.g. `class={cls()}` where `cls` builds the string) is not rewritten —
   keep scoped class literals in the template. `app.mist`'s style cannot be
   scoped — it is global by definition.
+- **`<style global>`** is the opposite opt-out: the block is hoisted into
+  `app.wxss` instead of the unit's own `.wxss`, so its rules apply app-wide.
+  On a component this also flips the default `styleIsolation` to
+  `'apply-shared'` (an explicit `styleIsolation` in `config` still wins) —
+  without that, WeChat's isolation would block the component's own
+  now-app-level rules from reaching it. Use it for an inlined component that
+  deliberately styles parent/slotted content, or a component opting into
+  page-level CSS. `scoped` and `global` on one block is an error, and
+  `app.mist` rejects the attribute (its style is already global).
+  Single-file builds have no `app.wxss` — the block stays in the unit's own
+  output there.
 - `app.mist`'s `<style>` becomes `app.wxss` (global; `page { … }` is valid there).
 - **Design tokens** — place `src/theme.css` next to `app.mist` to define
   Tailwind v4 tokens and custom utilities for the whole project:
