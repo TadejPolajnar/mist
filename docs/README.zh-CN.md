@@ -12,7 +12,7 @@ Mist 是一门**面向微信小程序的组件语言与编译器**：你编写 A
 - **[快速上手](#快速上手)**（就在下方）
 - **[语言指南](language.zh-CN.md)**——文件结构、响应式、模板、组件、store、样式
 - **[API 参考](api.zh-CN.md)**——`'mist'` 可导入的全部内容、命令行、产物说明
-- **[测试](testing.zh-CN.md)**——`mistc test`：在 Node 中启动编译后的页面，对状态与 `setData` payload 大小断言
+- **[测试](testing.zh-CN.md)**——`mistc test`：在 Node 中启动编译后的页面，对状态与 `setData` payload 大小断言；`--snapshots` 固定生成产物
 - **[i18n](i18n.zh-CN.md)**——locale store 模式：运行时切换语言，零编译器魔法
 - **[诊断说明](diagnostics.zh-CN.md)**——每一个 `M` 编码及修复方法
 

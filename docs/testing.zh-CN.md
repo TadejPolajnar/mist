@@ -91,3 +91,25 @@ JS——状态、派生值、方法、store、持久化、`setData` payload。�
 
 `mistc init` 会脚手架出一个可直接运行的 `tests/index.test.js`——从它
 开始。
+
+## 快照测试——`mistc test --snapshots`
+
+固定**生成产物**本身，捕捉行为测试测不到的问题：编译器升级悄悄改变了
+你的 WXML/JS/WXSS/JSON 输出。
+
+```sh
+mistc test --snapshots     # 编译 src/，将每个生成文件与 snapshots/ 对比
+mistc test --update        # 接受当前输出为新的基准
+```
+
+首次运行写入 `snapshots/`（请提交到 git）。此后每次运行都会重新编译并
+逐文件报告漂移——`CHANGED` 附首个差异行、`ADDED` 表示新增的输出文件、
+`REMOVED` 表示基准存在但不再生成——任何漂移都以非零码退出。
+`--filter <substr>` 只对比匹配的路径。`--update` 重写基准并清理过期
+文件（带 `--filter` 时跳过清理）；像审查其他改动一样审查 `snapshots/`
+的 `git diff`。快照运行是一次性的——`--watch` 不能与 `--snapshots`
+同用。
+
+有意的产物变化（升级 `mistc`、修改模板）按设计会产生漂移——这正是它的
+意义。在 CI 中把 `--snapshots` 与 `mistc test` 并排运行；两者合起来
+覆盖行为与输出。

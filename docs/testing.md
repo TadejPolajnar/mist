@@ -93,3 +93,26 @@ page that uses it. `getApp()` returns `{}` unless your test registers an
 (optionally driven by `miniprogram-automator`).
 
 `mistc init` scaffolds a working `tests/index.test.js` — start from there.
+
+## Snapshot tests — `mistc test --snapshots`
+
+Pins the **emitted output** itself, catching what behavior tests can't: a
+compiler upgrade quietly changing your generated WXML/JS/WXSS/JSON.
+
+```sh
+mistc test --snapshots     # compile src/, diff every emitted file vs snapshots/
+mistc test --update        # accept current output as the new goldens
+```
+
+The first run writes `snapshots/` (commit it). After that, every run
+recompiles and reports drift per file — `CHANGED` with the first differing
+lines, `ADDED` for new output files, `REMOVED` for goldens nothing emits
+anymore — and exits nonzero on any drift. `--filter <substr>` narrows the
+comparison to matching paths. `--update` rewrites the goldens and prunes
+stale ones (pruning is skipped under `--filter`); review the `git diff` of
+`snapshots/` like any other change. Snapshot runs are one-shot — `--watch`
+does not combine with `--snapshots`.
+
+Intentional codegen changes (upgrading `mistc`, editing templates) will
+drift by design — that is the point. Run `--snapshots` in CI next to
+`mistc test`; the pair covers behavior and output.
