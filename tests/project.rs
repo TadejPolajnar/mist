@@ -1206,3 +1206,66 @@ fn page_min_lib_version_overrides_app_floor() {
         p.warnings
     );
 }
+
+#[test]
+fn m1028_flags_dom_packages_and_trusted_packages_suppresses() {
+    if std::process::Command::new("npm").arg("--version").output().is_err() {
+        eprintln!("skipping: npm not available");
+        return;
+    }
+    let dir = std::env::temp_dir().join("mist-npm-dom-scan");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("stores")).unwrap();
+    std::fs::create_dir_all(dir.join("node_modules/domish")).unwrap();
+    std::fs::write(
+        dir.join("node_modules/domish/package.json"),
+        "{ \"name\": \"domish\", \"version\": \"1.0.0\", \"main\": \"index.js\" }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("node_modules/domish/index.js"),
+        "module.exports = function width() { return window.innerWidth || document.body.clientWidth; };\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("stores/size.ts"),
+        "import { store } from 'mist'\nimport width from 'domish'\nexport const size = store({ w: 0 })\nexport function measure() { size.value.w = width() }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { size, measure } from '../stores/size.ts'\n---\n<span onTap={measure}>{size.value.w}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    assert!(
+        p.warnings.iter().any(|w| w.contains("M1028") && w.contains("domish") && w.contains("window")),
+        "warnings: {:?}",
+        p.warnings
+    );
+    let store = p.files.iter().find(|f| f.out_path == "stores/size").expect("store missing");
+    assert!(
+        store.output.js.contains("require('../vendor/domish.js')"),
+        "store js:\n{}",
+        store.output.js
+    );
+    assert!(p.files.iter().any(|f| f.out_path == "vendor/domish"), "vendor bundle missing");
+
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nexport const config = { trustedPackages: ['domish'] }\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    assert!(
+        p.warnings.iter().all(|w| !w.contains("M1028")),
+        "trustedPackages must suppress: {:?}",
+        p.warnings
+    );
+}

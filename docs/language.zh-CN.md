@@ -530,7 +530,7 @@ onShow(() => {
 
 ## npm 导入——`import dayjs from 'dayjs'`
 
-页面和组件中可以使用裸 npm 导入（store 模块暂不支持）。在项目根目录
+页面、组件和 store 模块中都可以使用裸 npm 导入。在项目根目录
 `npm install` 依赖；编译器用 esbuild（像 Tailwind 一样一次性安装到
 `~/.cache/mistc/`）把每个导入的包打包为自包含的
 `dist/vendor/<pkg>.js`，并生成普通的 `require`。支持默认、具名和子路径
@@ -557,12 +557,19 @@ function f() {
 返回值是普通数据——赋给 state 没有问题。检查覆盖直接调用（包括
 `dayjs.utc(...)` 这样的成员调用）；通过别名或回调转交响应式值属于
 M1001 记录的同一类不可追踪边界。打包只在项目构建中进行——单文件构建
-会生成 `require` 但不产出 vendor 文件。编译器暂不检测依赖 DOM 或 Node
-API 的包——它们能打包成功但会在微信 JS 环境中运行时报错；请只使用纯
-计算类库。
+会生成 `require` 但不产出 vendor 文件。打包产物会被扫描微信缺失的浏览器
+API（`window`、`document`、`navigator`、`localStorage` 等）——命中时以
+**M1028** 警告。扫描是启发式的——裸存在性检查
+（`typeof window`）不会命中，但防御性的成员读取（`if (window.foo)`）
+仍会命中——确认安全的包可在 `app.mist` 中放行（仅限 app 级；其他位置
+声明会报错）：
+
+```ts
+export const config = { trustedPackages: ['fuse.js'] }
+```
 
 ## 尚未支持（路线图——这些功能今天会给出明确的错误）
 
-嵌套循环内的调用（M1009）、store 模块内的 npm 导入。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
+嵌套循环内的调用（M1009）。Tab bar/window 配置：把 `tabBar` 放进 `app.mist` 的 `config`——不需要单独的配置文件。
 
 TypeScript 注解（参数/返回类型、`interface`、`type`、`as`、泛型、`import type`）在生成前被剥离——放心添加注解；它们都不会进入生成的 JS。`enum` 是例外：它是运行时构造，会被拒绝并附带修复提示（请使用 const 对象或字符串字面量联合类型）。

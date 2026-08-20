@@ -40,6 +40,8 @@ pub struct Analysis {
     pub custom_attrs: Vec<String>,
     /// `config.minLibVersion` — opt-in base-library floor for M1027 since-version checks
     pub min_lib_version: Option<String>,
+    /// `config.trustedPackages` — npm packages exempt from the M1028 foreign-API scan
+    pub trusted_packages: Vec<String>,
     /// bare npm imports (SPEC §12 boundary rule) — bundled to `vendor/` in project builds
     pub npm_imports: Vec<NpmImport>,
     /// `config.virtualHost` — component-only; removes the wrapper node
@@ -69,6 +71,8 @@ pub struct MistImport {
 pub struct StoreModuleInfo {
     pub stores: Vec<String>,
     pub fns: Vec<String>,
+    /// bare npm packages the store module imports (bundled in project builds)
+    pub npm_packages: Vec<String>,
 }
 
 /// A page/component's import of a store module.
@@ -517,6 +521,7 @@ pub fn analyze_with_stores_bound(
     let mut custom_tags_raw: Option<String> = None;
     let mut custom_attrs_raw: Option<String> = None;
     let mut min_lib_version: Option<String> = None;
+    let mut trusted_packages_raw: Option<String> = None;
     let mut component_options_raw: Option<String> = None;
     let mut plain_stmts: Vec<Span> = Vec::new();
     let mut plain_consts: Vec<String> = Vec::new();
@@ -695,6 +700,11 @@ pub fn analyze_with_stores_bound(
                                     None => (None, None),
                                 };
                                 min_lib_version = min_lib;
+                                let (trusted, remaining) = match remaining {
+                                    Some(raw) => split_string_array_config(&raw, "trustedPackages")?,
+                                    None => (None, None),
+                                };
+                                trusted_packages_raw = trusted;
                                 let (component_options, remaining) = match remaining {
                                     Some(raw) => split_component_options_config(&raw)?,
                                     None => (None, None),
@@ -1041,6 +1051,11 @@ pub fn analyze_with_stores_bound(
         None => Vec::new(),
     };
 
+    let trusted_packages = match trusted_packages_raw {
+        Some(raw) => trusted_packages_config_entries(&raw)?,
+        None => Vec::new(),
+    };
+
     let component_options = match component_options_raw {
         Some(raw) => component_options_config_entries(&raw)?,
         None => ComponentOptions::default(),
@@ -1099,6 +1114,7 @@ pub fn analyze_with_stores_bound(
         custom_tags,
         custom_attrs,
         min_lib_version,
+        trusted_packages,
         npm_imports,
         virtual_host: component_options.virtual_host,
         pure_data_pattern: component_options.pure_data_pattern,
@@ -1501,6 +1517,40 @@ fn custom_tags_config_entries(raw: &str) -> Result<Vec<String>, String> {
 
 fn custom_attrs_config_entries(raw: &str) -> Result<Vec<String>, String> {
     string_array_config_entries(raw, "customAttrs")
+}
+
+fn trusted_packages_config_entries(raw: &str) -> Result<Vec<String>, String> {
+    let wrapped = format!("({})", raw);
+    let allocator = Allocator::default();
+    let source_type = SourceType::default().with_typescript(true);
+    let ret = Parser::new(&allocator, &wrapped, source_type).parse();
+    if !ret.errors.is_empty() {
+        return Err("config.trustedPackages must be an array literal".to_string());
+    }
+    let Some(Statement::ExpressionStatement(es)) = ret.program.body.first() else {
+        return Err("config.trustedPackages must be an array literal".to_string());
+    };
+    let Expression::ArrayExpression(arr) = unparenthesize(&es.expression) else {
+        return Err("config.trustedPackages must be an array literal".to_string());
+    };
+    let mut out = Vec::new();
+    for el in &arr.elements {
+        let e = el
+            .as_expression()
+            .ok_or("config.trustedPackages must hold string literals")?;
+        let Expression::StringLiteral(value) = unparenthesize(e) else {
+            return Err("config.trustedPackages must hold string literals".to_string());
+        };
+        let value = value.value.to_string();
+        if !crate::npm_bundle::valid_package_name(&value) {
+            return Err(format!(
+                "config.trustedPackages['{}'] is not a valid npm package name",
+                value
+            ));
+        }
+        out.push(value);
+    }
+    Ok(out)
 }
 
 fn string_array_config_entries(raw: &str, key: &str) -> Result<Vec<String>, String> {
@@ -2068,6 +2118,16 @@ pub fn emit_js_route(
 /// boxes; exported functions get their mutations compiled to path-precise
 /// `__set` calls; everything is wired up as a plain CommonJS module.
 pub fn compile_store_module(src: &str, rt_require: &str) -> Result<(String, StoreModuleInfo), String> {
+    compile_store_module_vendored(src, rt_require, "./")
+}
+
+/// `vendor_prefix`: path prefix from the compiled store's output dir to the
+/// vendor dir ("../vendor/" nested, "./" flat).
+pub fn compile_store_module_vendored(
+    src: &str,
+    rt_require: &str,
+    vendor_prefix: &str,
+) -> Result<(String, StoreModuleInfo), String> {
     let stripped = strip_types(src, 1)?;
     let src = stripped.src.as_str();
     let allocator = Allocator::default();
@@ -2080,8 +2140,61 @@ pub fn compile_store_module(src: &str, rt_require: &str) -> Result<(String, Stor
     let program = ret.program;
 
     let mut info = StoreModuleInfo::default();
+    let mut store_npm: Vec<NpmImport> = Vec::new();
     // first pass: find store names so mutations anywhere in the module compile
     for stmt in &program.body {
+        if let Statement::ImportDeclaration(import) = stmt {
+            let path = import.source.value.to_string();
+            if path == "mist" {
+                continue;
+            }
+            if path.starts_with("mist/") {
+                return Err(format!(
+                    "cannot import '{}' — the 'mist' module has no subpaths; import from 'mist' directly",
+                    path
+                ));
+            }
+            if path.starts_with("./") || path.starts_with("../") || path.ends_with(".mist") {
+                return Err(format!(
+                    "store modules can only import from 'mist' or npm packages (found '{}')",
+                    path
+                ));
+            }
+            if !crate::npm_bundle::valid_package_name(&path) {
+                return Err(format!("cannot import '{}' — not a valid npm package name", path));
+            }
+            let mut default_local = None;
+            let mut named = Vec::new();
+            if let Some(specs) = import.specifiers.as_ref() {
+                for spec in specs.iter() {
+                    match spec {
+                        ImportDeclarationSpecifier::ImportDefaultSpecifier(d) => {
+                            default_local = Some(d.local.name.to_string());
+                        }
+                        ImportDeclarationSpecifier::ImportSpecifier(named_spec) => {
+                            named.push((
+                                named_spec.imported.name().to_string(),
+                                named_spec.local.name.to_string(),
+                            ));
+                        }
+                        ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                            return Err(format!(
+                                "npm import '{}': namespace imports (`* as`) are not supported — use default or named imports",
+                                path
+                            ));
+                        }
+                    }
+                }
+            }
+            if default_local.is_none() && named.is_empty() {
+                return Err(format!(
+                    "npm import '{}' needs a default or named import — side-effect-only imports are not supported",
+                    path
+                ));
+            }
+            store_npm.push(NpmImport { package: path, default_local, named, require_path: String::new() });
+            continue;
+        }
         if let Statement::ExportNamedDeclaration(export) = stmt {
             if let Some(Declaration::VariableDeclaration(var)) = &export.declaration {
                 for decl in &var.declarations {
@@ -2143,17 +2256,62 @@ pub fn compile_store_module(src: &str, rt_require: &str) -> Result<(String, Stor
         slice
     };
 
+    if !store_npm.is_empty() {
+        let mut npm_locals = std::collections::HashSet::new();
+        for ni in &store_npm {
+            if let Some(d) = &ni.default_local {
+                npm_locals.insert(d.clone());
+            }
+            for (_, local) in &ni.named {
+                npm_locals.insert(local.clone());
+            }
+        }
+        let reactive: std::collections::HashSet<String> = info.stores.iter().cloned().collect();
+        let mut check = NpmBoundaryCheck { npm_locals: &npm_locals, reactive: &reactive, hit: None };
+        check.visit_program(&program);
+        if let Some((offset, callee, name)) = check.hit {
+            let (line, col) = line_col(src, offset, 1);
+            return Err(format!(
+                "M1026 at line {}:{}: reactive value '{}' passed to npm import '{}' — npm code is an opaque boundary the compiler cannot track mutations through\n  help: copy what the function needs into a plain local first (const v = {n}.value.field) and pass that",
+                line, col, name, callee, n = name
+            ));
+        }
+    }
+
     let mut out = String::new();
     out.push_str("// generated by mistc — do not edit\n");
     out.push_str(&format!("const rt = require('{}');\n", rt_require));
+    if store_npm.iter().any(|ni| ni.default_local.is_some()) {
+        out.push_str(
+            "function __npmi(m) { return m && m.__esModule && m.default !== undefined ? m.default : m; }\n",
+        );
+    }
+    for ni in &store_npm {
+        let vendor = format!("{}{}.js", vendor_prefix, crate::npm_bundle::vendor_stem(&ni.package));
+        if let Some(local) = &ni.default_local {
+            out.push_str(&format!("const {} = __npmi(require('{}'));\n", local, vendor));
+        }
+        if !ni.named.is_empty() {
+            let bindings: Vec<String> = ni
+                .named
+                .iter()
+                .map(|(imported, local)| {
+                    if imported == local {
+                        local.clone()
+                    } else {
+                        format!("{}: {}", imported, local)
+                    }
+                })
+                .collect();
+            out.push_str(&format!("const {{ {} }} = require('{}');\n", bindings.join(", "), vendor));
+        }
+        info.npm_packages.push(ni.package.clone());
+    }
     for stmt in &program.body {
         match stmt {
             Statement::ImportDeclaration(import) => {
                 if import.source.value != "mist" {
-                    return Err(format!(
-                        "store modules can only import from 'mist' (found '{}')",
-                        import.source.value
-                    ));
+                    continue;
                 }
                 if let Some(specs) = import.specifiers.as_ref() {
                     check_mist_specifiers(src, specs, 1)?;

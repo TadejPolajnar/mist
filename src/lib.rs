@@ -122,6 +122,13 @@ impl Layout {
             Layout::Nested => format!("stores/{}", stem),
         }
     }
+    /// path prefix from a compiled store module to the vendor dir
+    fn store_vendor_prefix(&self) -> &'static str {
+        match self {
+            Layout::Flat => "./",
+            Layout::Nested => "../vendor/",
+        }
+    }
     /// require path from a compiled store module to the runtime
     fn store_rt_require(&self) -> &'static str {
         match self {
@@ -381,6 +388,11 @@ fn compile_unit_full_route(
         derived_keys.push(key);
     }
 
+    if !analysis.trusted_packages.is_empty() {
+        return Err(
+            "config.trustedPackages is app-level — declare it in app.mist so the whole project's bundles share one allowlist".to_string(),
+        );
+    }
     let route_seed = match route_param {
         Some(param) => match analysis.states.iter().find(|s| s.name == param) {
             Some(state) => Some((param, state.bound)),
@@ -715,10 +727,10 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
     }
 
     let mut ctx = new_project_ctx(Layout::Nested);
-    ctx.min_lib = sfc::split(&app_source)
-        .ok()
-        .and_then(|s| frontmatter::analyze(s.frontmatter).ok())
-        .and_then(|a| a.min_lib_version);
+    let app_pre = sfc::split(&app_source).ok().and_then(|s| frontmatter::analyze(s.frontmatter).ok());
+    ctx.min_lib = app_pre.as_ref().and_then(|a| a.min_lib_version.clone());
+    let trusted_packages: Vec<String> =
+        app_pre.map(|a| a.trusted_packages).unwrap_or_default();
     ctx.theme = std::fs::read_to_string(src.join("theme.css")).ok();
     warn_dropped_mist_subdirs(&pages_entries, "pages", &mut ctx);
     for page in &page_paths {
@@ -808,6 +820,17 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
         };
         for pkg in &npm_packages {
             let js = npm_bundle::bundle_package(&project_root, pkg)?;
+            if !trusted_packages.iter().any(|t| t == pkg) {
+                let hits = npm_bundle::foreign_api_hits(&js);
+                if !hits.is_empty() {
+                    ctx.warnings.push(format!(
+                        "M1028: npm package '{}' references {} — these APIs don't exist in WeChat's JS runtime and fail when reached\n  help: if the references are guarded feature detection, add '{}' to app.mist config.trustedPackages",
+                        pkg,
+                        hits.join(", "),
+                        pkg
+                    ));
+                }
+            }
             ctx.files.push(CompiledFile {
                 name: npm_bundle::vendor_stem(pkg),
                 out_path: format!("vendor/{}", npm_bundle::vendor_stem(pkg)),
@@ -1367,8 +1390,13 @@ fn compile_rec_at(
         }
         ctx.seen.push(canonical);
         let src = std::fs::read_to_string(&abs).map_err(|e| format!("cannot read {}: {}", abs.display(), e))?;
-        let (js, _) = frontmatter::compile_store_module(&src, ctx.layout.store_rt_require())
-            .map_err(|e| format!("{}: {}", abs.display(), e))?;
+        let (js, store_info) = frontmatter::compile_store_module_vendored(
+            &src,
+            ctx.layout.store_rt_require(),
+            ctx.layout.store_vendor_prefix(),
+        )
+        .map_err(|e| format!("{}: {}", abs.display(), e))?;
+        ctx.npm_packages.extend(store_info.npm_packages.iter().cloned());
         let stem = abs.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let out_path = ctx.layout.store_out_path(&stem);
         if let Some(prev) = ctx.store_out_paths.get(&out_path) {

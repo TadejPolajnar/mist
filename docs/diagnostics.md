@@ -4,7 +4,7 @@ Errors carry a code and a fix; M1001, M1004, M1007, M1011, M1013, M1017 and
 M1021 and M1022 include file line:col and M1010 the line (other codes report the file
 path only; M1015 reports line:col for import-shape errors and file path only
 for the `pluginComponents` value/collision checks). Warnings (`M1002`,
-`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`, `M1027`) go to stderr and
+`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`, `M1027`, `M1028`) go to stderr and
 never fail the build. M1020 is the exception among warnings above in name
 only — it is a warning when the tab bar file exists without the config flag,
 but an error when the flag is set without the file (see below).
@@ -449,3 +449,27 @@ Fix by raising `minLibVersion` (and the console setting) or dropping the
 feature. The version table is curated and deliberately incomplete — features
 without a recorded minimum are never checked, and without `minLibVersion` no
 version checks run at all. Warning-tier: staleness never breaks builds.
+
+## M1028 — bundled npm package references browser APIs
+
+Every vendor bundle is scanned for globals WeChat's JS runtime doesn't have —
+`window`, `document`, `navigator`, `localStorage`, `sessionStorage`,
+`XMLHttpRequest`. A hit means the package will throw when that code path
+runs on device:
+
+```
+M1028: npm package 'domish' references window, document — these APIs don't
+exist in WeChat's JS runtime and fail when reached
+```
+
+The scan is a token heuristic: bare existence checks
+(`typeof window !== 'undefined'`) pass untouched, but defensive member reads
+(`if (window.matchMedia)`) still hit. If you've verified the package
+degrades safely, allowlist it in `app.mist` — the key is app-level only and
+rejected elsewhere:
+
+```ts
+export const config = { trustedPackages: ['fuse.js'] }
+```
+
+Warning-tier: the build still succeeds either way.

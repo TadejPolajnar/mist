@@ -6,7 +6,7 @@
 M1021 和 M1022 会给出文件的行:列位置，M1010 给出行号（其余编码只报告文件
 路径；M1015 对导入形态错误给出行:列，对 `pluginComponents` 的取值/冲突检查
 只报告文件路径）。警告（`M1002`、`M1006`、`M1008`、`M1012`、`M1016`、
-`M1018`、`M1019`、`M1020`、`M1023`、`M1024`、`M1027`）输出到 stderr，永远不会导致构建失败。M1020 在
+`M1018`、`M1019`、`M1020`、`M1023`、`M1024`、`M1027`、`M1028`）输出到 stderr，永远不会导致构建失败。M1020 在
 上述警告中只是名义上的例外——当 tab bar 文件存在而配置标志缺失时它是警告，
 当设置了标志却缺少文件时它是错误（见下文）。
 
@@ -426,3 +426,24 @@ export const config = { minLibVersion: '2.9.0' }
 修复方式：调高 `minLibVersion`（连同后台设置）或去掉该特性。版本表是
 人工整理且刻意不完整的——没有记录最低版本的特性永远不检查；不设置
 `minLibVersion` 则完全不做版本检查。警告级：过期永远不会破坏构建。
+
+## M1028 —— 打包的 npm 包引用了浏览器 API
+
+每个 vendor 产物都会被扫描微信 JS 运行时没有的全局对象——`window`、
+`document`、`navigator`、`localStorage`、`sessionStorage`、
+`XMLHttpRequest`。命中意味着这段代码在真机上执行到时会抛错：
+
+```
+M1028: npm package 'domish' references window, document — these APIs don't
+exist in WeChat's JS runtime and fail when reached
+```
+
+扫描是词法启发式的：裸存在性检查（`typeof window !== 'undefined'`）不会
+命中，但防御性的成员读取（`if (window.matchMedia)`）仍会命中。确认包能
+安全降级后，在 `app.mist` 中放行（该键仅限 app 级，其他位置声明会报错）：
+
+```ts
+export const config = { trustedPackages: ['fuse.js'] }
+```
+
+警告级：无论如何构建都会成功。

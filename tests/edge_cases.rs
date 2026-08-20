@@ -106,13 +106,32 @@ fn multibyte_in_class_and_attribute_values() {
 // ---- store edge cases ----
 
 #[test]
-fn store_module_rejects_non_mist_imports() {
+fn store_module_npm_imports_compile_and_relative_stay_rejected() {
+    let (js, info) = mistc::frontmatter::compile_store_module_vendored(
+        "import { store } from 'mist'\nimport lodash from 'lodash'\nexport const s = store(1)\nexport function f(n) { s.value = lodash.clamp(n, 0, 9) }\n",
+        "../mist-rt.js",
+        "../vendor/",
+    )
+    .expect("npm imports in stores must compile");
+    assert!(js.contains("const lodash = __npmi(require('../vendor/lodash.js'));"), "js:\n{}", js);
+    assert_eq!(info.npm_packages, vec!["lodash".to_string()]);
+
     let e = mistc::frontmatter::compile_store_module(
-        "import { store } from 'mist'\nimport lodash from 'lodash'\nexport const s = store(1)\n",
+        "import { store } from 'mist'\nimport { x } from './other.ts'\nexport const s = store(1)\n",
         "./mist-rt.js",
     )
     .unwrap_err();
-    assert!(e.contains("can only import from 'mist'"), "err: {}", e);
+    assert!(e.contains("can only import from 'mist' or npm packages"), "err: {}", e);
+}
+
+#[test]
+fn store_module_npm_boundary_is_enforced() {
+    let e = mistc::frontmatter::compile_store_module(
+        "import { store } from 'mist'\nimport check from 'validator'\nexport const cart = store({ n: 0 })\nexport function f() { return check(cart.value) }\n",
+        "./mist-rt.js",
+    )
+    .unwrap_err();
+    assert!(e.contains("M1026") && e.contains("'cart'") && e.contains("'check'"), "err: {}", e);
 }
 
 #[test]

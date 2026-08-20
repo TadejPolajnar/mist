@@ -678,7 +678,7 @@ examples/portfolio's position page.
 
 ## npm imports — `import dayjs from 'dayjs'`
 
-Bare npm imports work in pages and components (not in store modules yet).
+Bare npm imports work in pages, components and store modules.
 `npm install` your dependency in the project root; the compiler bundles each
 imported package into a self-contained `dist/vendor/<pkg>.js` via esbuild
 (installed once into `~/.cache/mistc/`, like Tailwind) and emits plain
@@ -708,14 +708,20 @@ Return values are plain data — assigning them to state is fine. The check
 covers direct calls (including member calls like `dayjs.utc(...)`); routing
 a reactive value through an alias or callback is the same untracked frontier
 M1001 documents. Bundling runs in project builds only — single-file builds
-emit the `require` but no vendor file. The compiler does not yet detect
-packages that need DOM or Node APIs — those bundle successfully and fail at
-runtime in WeChat's JS context; stick to pure computation libraries.
+emit the `require` but no vendor file. Bundled output is scanned for browser
+APIs WeChat lacks (`window`, `document`, `navigator`, `localStorage`, …) —
+hits warn with **M1028**. The scan is a heuristic — bare existence
+checks (`typeof window`) pass, but member reads used defensively
+(`if (window.foo)`) still hit — so allowlist verified-safe packages in
+`app.mist` (app-level only; the key is rejected elsewhere):
+
+```ts
+export const config = { trustedPackages: ['fuse.js'] }
+```
 
 ## Not yet (roadmap — these error cleanly today)
 
-Calls in nested loops (M1009),
-npm imports inside store modules. Tab bar/window config:
+Calls in nested loops (M1009). Tab bar/window config:
 put `tabBar` in `app.mist`'s `config` — no separate config file needed.
 
 TypeScript annotations (param/return types, `interface`, `type`, `as`,

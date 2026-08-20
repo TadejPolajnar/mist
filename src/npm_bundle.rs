@@ -123,3 +123,33 @@ pub fn bundle_package(project_root: &Path, pkg: &str) -> Result<String, String> 
     }
     Ok(js)
 }
+
+/// Browser/Node globals that don't exist in WeChat's JS runtime. Token scan
+/// over the bundled output — heuristic by design (feature-detection code
+/// false-positives; suppress via app.mist `config.trustedPackages`).
+const FOREIGN_APIS: &[&str] =
+    &["window", "document", "navigator", "localStorage", "sessionStorage", "XMLHttpRequest"];
+
+pub fn foreign_api_hits(js: &str) -> Vec<&'static str> {
+    let mut hits = Vec::new();
+    for api in FOREIGN_APIS {
+        let mut found = false;
+        for (i, _) in js.match_indices(api) {
+            let before_ok = js[..i]
+                .chars()
+                .next_back()
+                .map(|c| !c.is_alphanumeric() && c != '_' && c != '$' && c != '.')
+                .unwrap_or(true);
+            let after = js[i + api.len()..].chars().next();
+            let after_ok = matches!(after, Some('.') | Some('[') | Some('('));
+            if before_ok && after_ok {
+                found = true;
+                break;
+            }
+        }
+        if found {
+            hits.push(*api);
+        }
+    }
+    hits
+}

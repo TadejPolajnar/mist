@@ -1263,6 +1263,7 @@ fn m1026_catches_member_callee_and_store_mirrors() {
         Some(mistc::frontmatter::StoreModuleInfo {
             stores: vec!["cart".to_string()],
             fns: vec![],
+            npm_packages: vec![],
         })
     };
     let err = match mistc::compile_unit_with_stores(src, true, &resolver) {
@@ -1320,4 +1321,11 @@ fn min_lib_version_rejects_garbage() {
     let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { minLibVersion: 'latest' }\n---\n<span>{n.value}</span>\n";
     let err = mistc::compile(src).unwrap_err();
     assert!(err.contains("minLibVersion"), "err: {}", err);
+}
+
+#[test]
+fn trusted_packages_rejected_outside_app_mist() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nexport const config = { trustedPackages: ['dayjs'] }\n---\n<span>{n.value}</span>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("trustedPackages") && err.contains("app.mist"), "err: {}", err);
 }

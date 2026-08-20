@@ -383,8 +383,9 @@ polish: `M1001` aliased state mutation, `M1002` unsupported Tailwind utility,
   touch DOM/Node APIs. *Shipped design (boundary rule, spike 030-C): pages/components
   may bare-import; esbuild bundles to `dist/vendor/`; reactive values crossing into
   imported functions are M1026 errors — copy into plain locals first. Store-module
-  imports, a `raw()` escape hatch, and the DOM/Node-API diagnostic remain future
-  work — packages touching those APIs currently bundle but fail at runtime.*
+  imports ship; bundled output is scanned for browser APIs WeChat lacks
+  (M1028 warning, `trustedPackages` allowlist). A `raw()` escape hatch
+  remains future work.*
 - **Testing:** compiler snapshot tests (`.mist` → emitted WXML/JS) are first-class
   (`mist test --snapshots`); logic in stores/helpers is plain TS, unit-testable with
   vitest without WeChat.
