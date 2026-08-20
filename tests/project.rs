@@ -1269,3 +1269,86 @@ fn m1028_flags_dom_packages_and_trusted_packages_suppresses() {
         p.warnings
     );
 }
+
+#[test]
+fn style_global_hoists_to_app_wxss() {
+    let dir = std::env::temp_dir().join("mist-style-global");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nimport Badge from '../components/badge.mist'\nconst n = state(0)\n---\n<div class=\"hero\"><Badge label=\"hi\" /><span>{n.value}</span></div>\n<style global>\n.hero { padding: 2px; }\n</style>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/badge.mist"),
+        "---\nimport { state, props } from 'mist'\nconst { label } = props({ label: '' })\nconst hits = state(0)\nfunction bump() { hits.value++ }\n---\n<span class=\"badge\" onTap={bump}>{label} {hits.value}</span>\n<style global>\n.badge { color: red; }\n</style>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n<style>\n.app-base { color: black; }\n</style>\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    let app = p.app.as_ref().unwrap();
+    assert!(app.wxss.contains(".app-base"), "app.wxss:\n{}", app.wxss);
+    assert!(app.wxss.contains(".hero { padding: 2px; }"), "app.wxss:\n{}", app.wxss);
+    assert!(app.wxss.contains(".badge { color: red; }"), "app.wxss:\n{}", app.wxss);
+    let page = p.files.iter().find(|f| f.is_page).unwrap();
+    assert!(!page.output.wxss.contains(".hero"), "page wxss:\n{}", page.output.wxss);
+    let badge = p.files.iter().find(|f| f.name == "badge").unwrap();
+    assert!(!badge.output.wxss.contains(".badge"), "badge wxss:\n{}", badge.output.wxss);
+    let json = badge.output.json.as_ref().unwrap();
+    assert!(json.contains("\"styleIsolation\": \"apply-shared\""), "json: {}", json);
+}
+
+#[test]
+fn style_global_inlined_component_skips_parent_merge() {
+    let dir = std::env::temp_dir().join("mist-style-global-inline");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nimport Badge from '../components/badge.mist'\nconst n = state(0)\n---\n<div><Badge label=\"hi\" /><span>{n.value}</span></div>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/badge.mist"),
+        "---\nimport { props } from 'mist'\nconst { label } = props()\n---\n<span class=\"badge\">{label}</span>\n<style global>\n.badge { color: red; }\n</style>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    assert!(p.app.as_ref().unwrap().wxss.contains(".badge { color: red; }"));
+    let page = p.files.iter().find(|f| f.is_page).unwrap();
+    assert!(!page.output.wxss.contains(".badge"), "page wxss:\n{}", page.output.wxss);
+}
+
+#[test]
+fn app_style_rejects_global_attr() {
+    let dir = std::env::temp_dir().join("mist-app-global");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(dir.join("pages/index.mist"), "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n").unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n<style global>\n.a { color: red; }\n</style>\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("already global"), "err: {}", err);
+}
+
+#[test]
+fn style_scoped_and_global_together_error() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n<style scoped global>\n.x { color: red; }\n</style>\n";
+    let err = mistc::compile(src).unwrap_err();
+    assert!(err.contains("both scoped and global"), "err: {}", err);
+}

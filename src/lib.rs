@@ -31,6 +31,8 @@ pub struct Unit {
     pub classes: Vec<String>,
     /// raw `<style>` content
     pub style: String,
+    /// `<style global>` — hoisted to app.wxss in directory builds
+    pub style_global: bool,
     /// relative paths of imported store modules
     pub store_import_paths: Vec<String>,
     /// bare npm packages imported by this unit (bundled in project builds)
@@ -481,7 +483,7 @@ fn compile_unit_full_route(
     let effective_min_lib = analysis.min_lib_version.as_deref().or(project_min_lib);
     warnings.extend(meta_warning_texts(&wxml_out, &analysis.custom_attrs, effective_min_lib));
 
-    let json = build_json(analysis.config.as_deref(), &using, is_page)?;
+    let json = build_json(analysis.config.as_deref(), &using, is_page, sfc.style_global)?;
 
     // inlined children render inside this unit — import their template partials
     let mut wxml = String::new();
@@ -517,6 +519,7 @@ fn compile_unit_full_route(
         used_inline_locals: wxml_out.used_inline,
         classes,
         style,
+        style_global: sfc.style_global,
         store_import_paths,
         npm_packages,
         warnings,
@@ -591,6 +594,7 @@ fn compile_template_unit(source: &str, name: &str, project_min_lib: Option<&str>
         used_inline_locals: Vec::new(),
         classes,
         style,
+        style_global: sfc.style_global,
         store_import_paths: Vec::new(),
         npm_packages: Vec::new(),
         warnings: template_warnings,
@@ -990,6 +994,7 @@ fn new_project_ctx(layout: Layout) -> ProjectCtx {
         files: Vec::new(),
         classes: Vec::new(),
         template_styles: BTreeMap::new(),
+        global_styles: Vec::new(),
         store_out_paths: BTreeMap::new(),
         class_sources: BTreeMap::new(),
         style_defined_classes: std::collections::HashSet::new(),
@@ -1125,6 +1130,9 @@ fn compile_app(
     if sfc.style_scoped {
         return Err("app.mist <style> cannot be scoped — app styles are global by definition".to_string());
     }
+    if sfc.style_global {
+        return Err("app.mist <style> is already global — drop the global attribute".to_string());
+    }
     let wxss = sfc.style.unwrap_or("").to_string();
     ctx.style_defined_classes.extend(tailwind::harvest_style_classes(&wxss));
     Ok(AppShell { js, json, wxss })
@@ -1211,7 +1219,16 @@ fn validate_routes(ctx: &ProjectCtx, tab_bar_paths: Option<&[String]>) -> Result
     Ok(())
 }
 
-fn finish_project(mut ctx: ProjectCtx, app: Option<AppShell>) -> Result<Project, String> {
+fn finish_project(mut ctx: ProjectCtx, mut app: Option<AppShell>) -> Result<Project, String> {
+    if let Some(app) = app.as_mut() {
+        for s in &ctx.global_styles {
+            if !app.wxss.is_empty() && !app.wxss.ends_with('\n') {
+                app.wxss.push('\n');
+            }
+            app.wxss.push_str(s);
+            app.wxss.push('\n');
+        }
+    }
     ctx.classes.sort();
     ctx.classes.dedup();
     let (tailwind_css, tailwind_theme_css, unknown_classes, dropped_selectors) =
@@ -1273,6 +1290,8 @@ struct ProjectCtx {
     classes: Vec<String>,
     /// kebab name → raw style of compiled template partials (for parent merging)
     template_styles: BTreeMap<String, String>,
+    /// `<style global>` blocks hoisted out of units — appended to app.wxss
+    global_styles: Vec<String>,
     /// store out_path → source file, to reject two different files landing on one path
     store_out_paths: BTreeMap<String, PathBuf>,
     class_sources: BTreeMap<String, String>,
@@ -1331,7 +1350,14 @@ fn compile_rec_at(
         }
         ctx.classes.extend(unit.classes.iter().cloned());
         ctx.style_defined_classes.extend(tailwind::harvest_style_classes(&unit.style));
-        ctx.template_styles.insert(name.clone(), unit.style.clone());
+        if unit.style_global && matches!(ctx.layout, Layout::Nested) {
+            if !unit.style.is_empty() {
+                ctx.global_styles.push(unit.style.clone());
+            }
+            ctx.template_styles.insert(name.clone(), String::new());
+        } else {
+            ctx.template_styles.insert(name.clone(), unit.style.clone());
+        }
         let out_path = ctx.layout.out_path(&name, false);
         ctx.files.push(CompiledFile {
             name,
@@ -1445,11 +1471,18 @@ fn compile_rec_at(
         })
         .collect();
     let route_refs = unit.route_refs.clone();
+    let hoist_global = unit.style_global && matches!(ctx.layout, Layout::Nested);
+    let own_style = if hoist_global { "" } else { unit.style.as_str() };
     let mut output = unit.output;
     if !merged.is_empty() {
         let mut combined = unit.classes.clone();
         combined.extend(ctx.classes.iter().cloned());
-        output.wxss = assemble_wxss(&combined, &unit.style, &merged, ctx.layout, depth, is_page);
+        output.wxss = assemble_wxss(&combined, own_style, &merged, ctx.layout, depth, is_page);
+    } else if hoist_global {
+        output.wxss = assemble_wxss(&unit.classes, own_style, &[], ctx.layout, depth, is_page);
+    }
+    if hoist_global && !unit.style.is_empty() {
+        ctx.global_styles.push(unit.style.clone());
     }
 
     let out_path = match (forced_out_path, package) {
@@ -1473,7 +1506,11 @@ fn build_json(
     config: Option<&str>,
     using: &BTreeMap<String, String>,
     is_page: bool,
+    style_global: bool,
 ) -> Result<Option<String>, String> {
+    // a global-styled component must receive app/page styles or its own
+    // (now app-level) rules would never reach it
+    let default_isolation = if style_global { "apply-shared" } else { "isolated" };
     let mut fields: Vec<String> = Vec::new();
     if !is_page {
         fields.push("\"component\": true".to_string());
@@ -1500,7 +1537,7 @@ fn build_json(
             )?;
         }
         if !is_page && !keys.iter().any(|k| k == "styleIsolation") {
-            fields.push("\"styleIsolation\": \"isolated\"".to_string());
+            fields.push(format!("\"styleIsolation\": \"{}\"", default_isolation));
         }
         let json = frontmatter::config_literal_to_json(config)?;
         let inner = object_inner(&json).to_string();
@@ -1508,7 +1545,7 @@ fn build_json(
             fields.push(inner);
         }
     } else if !is_page {
-        fields.push("\"styleIsolation\": \"isolated\"".to_string());
+        fields.push(format!("\"styleIsolation\": \"{}\"", default_isolation));
     }
     if fields.is_empty() && is_page {
         return Ok(None);
