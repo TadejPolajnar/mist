@@ -702,7 +702,7 @@ examples/portfolio's position page.
 
 Bare npm imports work in pages, components and store modules.
 `npm install` your dependency in the project root; the compiler bundles each
-imported package into a self-contained `dist/vendor/<pkg>.js` via esbuild
+imported package into a self-contained, minified `dist/vendor/<pkg>.js` via esbuild
 (installed once into `~/.cache/mistc/`, like Tailwind) and emits plain
 `require`s. Default, named and subpath imports are supported; `* as`
 namespace imports are not.

@@ -548,7 +548,7 @@ onShow(() => {
 
 ## npm 导入——`import dayjs from 'dayjs'`
 
-页面、组件和 store 模块中都可以使用裸 npm 导入。在项目根目录
+页面、组件和 store 模块中都可以使用裸 npm 导入（vendor 产物经 esbuild 压缩）。在项目根目录
 `npm install` 依赖；编译器用 esbuild（像 Tailwind 一样一次性安装到
 `~/.cache/mistc/`）把每个导入的包打包为自包含的
 `dist/vendor/<pkg>.js`，并生成普通的 `require`。支持默认、具名和子路径

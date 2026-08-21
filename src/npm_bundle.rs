@@ -106,7 +106,7 @@ pub fn bundle_package(project_root: &Path, pkg: &str) -> Result<String, String> 
         ));
     }
     let memo = package_version(project_root, pkg).map(|v| {
-        esbuild_cache_dir().join(format!("bundle-{}-{}.js", vendor_stem(pkg), v))
+        esbuild_cache_dir().join(format!("bundle-{}-{}-min.js", vendor_stem(pkg), v))
     });
     if let Some(memo_path) = &memo {
         if let Ok(cached) = fs::read_to_string(memo_path) {
@@ -125,7 +125,7 @@ pub fn bundle_package(project_root: &Path, pkg: &str) -> Result<String, String> 
     let outfile = io.join("out.js");
     let result = Command::new(&bin)
         .arg(&stub)
-        .args(["--bundle", "--format=cjs", "--platform=browser", "--target=es2018", "--log-level=warning"])
+        .args(["--bundle", "--minify", "--format=cjs", "--platform=browser", "--target=es2018", "--log-level=warning"])
         .arg(format!("--outfile={}", outfile.display()))
         .env("NODE_PATH", project_root.join("node_modules"))
         .output()

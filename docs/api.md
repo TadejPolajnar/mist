@@ -120,6 +120,8 @@ mistc test [dir] --snapshots [--update] [--filter <substring>]
 ```
 dist/
 ├── app.js  app.json  app.wxss  sitemap.json
+│                               # app.json enables lazyCodeLoading:
+│                               # "requiredComponents" (set your own to override)
 ├── mist-rt.js                  # the runtime (~9 KB, comment-stripped)
 ├── tw-shared.wxss              # tailwind utilities (imported by every unit)
 ├── tw-theme.wxss               # page{} theme vars (imported by pages only)

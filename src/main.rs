@@ -408,6 +408,21 @@ fn run_tests(dir: &Path, filter: Option<&str>, timeout_secs: u64) -> Result<bool
     Ok(failed == 0)
 }
 
+/// CSS strings cannot contain raw newlines, so line-leading whitespace and
+/// blank lines are never load-bearing.
+fn strip_css_whitespace(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    for line in css.lines() {
+        let t = line.trim_start();
+        if t.is_empty() {
+            continue;
+        }
+        out.push_str(t);
+        out.push('\n');
+    }
+    out
+}
+
 fn run_build(input: &Path, outdir: &Path, emit_app: bool) -> bool {
     run_build_opt(input, outdir, emit_app, false)
 }
@@ -434,6 +449,13 @@ fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bo
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).expect("cannot create output dir");
         }
+        let slim;
+        let content = if rel.ends_with(".wxss") {
+            slim = strip_css_whitespace(content);
+            slim.as_str()
+        } else {
+            content
+        };
         if fs::read(&p).ok().as_deref() != Some(content.as_bytes()) {
             fs::write(p, content).unwrap();
         }

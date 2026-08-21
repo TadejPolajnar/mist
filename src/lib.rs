@@ -1132,8 +1132,10 @@ fn compile_app(
         fields.push(format!("\"subPackages\": [{}]", sub_packages.join(", ")));
     }
     let mut tab_bar_custom = false;
+    let mut lazy_declared = false;
     if let Some(config) = analysis.config.as_deref() {
         let keys = frontmatter::config_top_level_keys(config).map_err(|e| format!("app.mist: {}", e))?;
+        lazy_declared = keys.iter().any(|k| k == "lazyCodeLoading");
         reject_reserved_key(&keys, "pages", "the page list is generated from src/pages/")
             .map_err(|e| format!("app.mist: {}", e))?;
         reject_reserved_key(&keys, "subPackages", "subpackages are generated from src/packages/")
@@ -1156,6 +1158,9 @@ fn compile_app(
         ctx.warnings.push(
             "M1020: src/custom-tab-bar.mist exists but app.mist config lacks tabBar.custom: true — WeChat will ignore it and render the built-in tab bar\n  help: set tabBar: { custom: true, ... } in app.mist config".to_string(),
         );
+    }
+    if !lazy_declared {
+        fields.push("\"lazyCodeLoading\": \"requiredComponents\"".to_string());
     }
     fields.push("\"sitemapLocation\": \"sitemap.json\"".to_string());
     let json = format!("{{ {} }}", fields.join(", "));
