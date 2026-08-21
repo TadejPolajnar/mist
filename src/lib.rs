@@ -847,15 +847,15 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
         }
     }
 
-    let npm_packages: Vec<String> = ctx.npm_packages.iter().cloned().collect();
-    if !npm_packages.is_empty() {
+    let npm_usage = std::mem::take(&mut ctx.npm_usage);
+    if !npm_usage.is_empty() {
         let parent = src.parent().unwrap_or(src);
         let project_root = if parent.join("node_modules").exists() {
             parent.to_path_buf()
         } else {
             src.to_path_buf()
         };
-        for pkg in &npm_packages {
+        for (pkg, users) in &npm_usage {
             let js = npm_bundle::bundle_package(&project_root, pkg)?;
             if !trusted_packages.iter().any(|t| t == pkg) {
                 let hits = npm_bundle::foreign_api_hits(&js);
@@ -868,11 +868,31 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
                     ));
                 }
             }
+            let stem = npm_bundle::vendor_stem(pkg);
+            // a vendor imported by exactly one subpackage moves into it — the
+            // main package keeps only vendors that main or several packages use
+            let sole_sub = match users.iter().collect::<Vec<_>>().as_slice() {
+                [Some(sub)] => Some(sub.clone()),
+                _ => None,
+            };
+            let out_path = match &sole_sub {
+                Some(sub) => format!("packages/{}/vendor/{}", sub, stem),
+                None => format!("vendor/{}", stem),
+            };
+            if let Some(sub) = &sole_sub {
+                let old = format!("require('../../../../vendor/{}.js')", stem);
+                let new = format!("require('../../vendor/{}.js')", stem);
+                for f in ctx.files.iter_mut() {
+                    if f.package.as_deref() == Some(sub.as_str()) && f.output.js.contains(&old) {
+                        f.output.js = f.output.js.replace(&old, &new);
+                    }
+                }
+            }
             ctx.files.push(CompiledFile {
-                name: npm_bundle::vendor_stem(pkg),
-                out_path: format!("vendor/{}", npm_bundle::vendor_stem(pkg)),
+                name: stem,
+                out_path,
                 is_page: false,
-                package: None,
+                package: sole_sub,
                 output: Output { wxml: String::new(), js, wxss: String::new(), json: None },
                 route_refs: Vec::new(),
                 route_param: None,
@@ -1018,7 +1038,7 @@ fn warn_dropped_mist_subdirs(pages_entries: &[PathBuf], label: &str, ctx: &mut P
 
 fn new_project_ctx(layout: Layout) -> ProjectCtx {
     ProjectCtx {
-        npm_packages: std::collections::BTreeSet::new(),
+        npm_usage: std::collections::BTreeMap::new(),
         min_lib: None,
         size_budget: None,
         store_info_memo: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -1320,7 +1340,8 @@ enum UnitKind {
 }
 
 struct ProjectCtx {
-    npm_packages: std::collections::BTreeSet<String>,
+    /// npm package → which packages import it (None = main package)
+    npm_usage: std::collections::BTreeMap<String, std::collections::BTreeSet<Option<String>>>,
     /// app.mist's `config.minLibVersion` — the project-wide floor units inherit
     /// unless they declare their own
     min_lib: Option<String>,
@@ -1469,7 +1490,9 @@ fn compile_rec_at(
     ctx.classes.extend(unit.classes.iter().cloned());
     ctx.style_defined_classes.extend(tailwind::harvest_style_classes(&unit.style));
     ctx.warnings.extend(unit.warnings.iter().map(|w| format!("{}: {}", path.display(), w)));
-    ctx.npm_packages.extend(unit.npm_packages.iter().cloned());
+    for p in &unit.npm_packages {
+        ctx.npm_usage.entry(p.clone()).or_default().insert(package.map(str::to_string));
+    }
 
     // compile imported store modules (deduped across the project)
     for store_path in &unit.store_import_paths {
@@ -1488,7 +1511,9 @@ fn compile_rec_at(
             ctx.layout.store_vendor_prefix(),
         )
         .map_err(|e| format!("{}: {}", abs.display(), e))?;
-        ctx.npm_packages.extend(store_info.npm_packages.iter().cloned());
+        for p in &store_info.npm_packages {
+            ctx.npm_usage.entry(p.clone()).or_default().insert(None);
+        }
         let stem = abs.file_stem().unwrap_or_default().to_string_lossy().to_string();
         let out_path = ctx.layout.store_out_path(&stem);
         if let Some(prev) = ctx.store_out_paths.get(&out_path) {

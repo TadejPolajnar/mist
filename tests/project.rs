@@ -1146,12 +1146,35 @@ fn npm_vendor_require_path_is_depth_aware_for_subpackages() {
         .find(|f| f.out_path == "packages/shop/pages/cart/cart")
         .expect("subpackage page missing");
     assert!(
-        cart.output.js.contains("require('../../../../vendor/greeting.js')"),
+        cart.output.js.contains("require('../../vendor/greeting.js')"),
         "js:\n{}",
         cart.output.js
     );
-    let vendor = p.files.iter().find(|f| f.out_path == "vendor/greeting").expect("vendor missing");
+    let vendor = p
+        .files
+        .iter()
+        .find(|f| f.out_path == "packages/shop/vendor/greeting")
+        .expect("subpackage-local vendor missing");
     assert!(vendor.output.js.contains("yo "), "vendor:\n{}", vendor.output.js);
+
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport {{ state }} from 'mist'\nimport greet from 'greeting'\nconst n = state('')\nfunction g() {{ n.value = greet('m') }}\n---\n<span onTap={{g}}>{{n.value}}</span>\n".replace("{{", "{").replace("}}", "}"),
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    let cart = p
+        .files
+        .iter()
+        .find(|f| f.out_path == "packages/shop/pages/cart/cart")
+        .unwrap();
+    assert!(
+        cart.output.js.contains("require('../../../../vendor/greeting.js')"),
+        "shared vendor must stay in main:\n{}",
+        cart.output.js
+    );
+    assert!(p.files.iter().any(|f| f.out_path == "vendor/greeting"), "main vendor missing");
+    assert!(!p.files.iter().any(|f| f.out_path == "packages/shop/vendor/greeting"));
 }
 
 #[test]

@@ -590,7 +590,9 @@ sortInPlace(raw(items.value))     // ✓ 可以编译；调用后 items 会被�
 返回值是普通数据——赋给 state 没有问题。检查覆盖直接调用（包括
 `dayjs.utc(...)` 这样的成员调用）；通过别名或回调转交响应式值属于
 M1001 记录的同一类不可追踪边界。打包只在项目构建中进行——单文件构建
-会生成 `require` 但不产出 vendor 文件。打包产物会被扫描微信缺失的浏览器
+会生成 `require` 但不产出 vendor 文件。只被一个分包导入的 npm 包会落在
+该分包自己的 `vendor/` 里，而不是主包——主包体积（受 2MB 硬限制的那个）
+只承载主包或多个分包共享的 vendor。打包产物会被扫描微信缺失的浏览器
 API（`window`、`document`、`navigator`、`localStorage` 等）——命中时以
 **M1028** 警告。扫描是启发式的——裸存在性检查
 （`typeof window`）不会命中，但防御性的成员读取（`if (window.foo)`）

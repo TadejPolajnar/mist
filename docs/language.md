@@ -747,7 +747,10 @@ Return values are plain data — assigning them to state is fine. The check
 covers direct calls (including member calls like `dayjs.utc(...)`); routing
 a reactive value through an alias or callback is the same untracked frontier
 M1001 documents. Bundling runs in project builds only — single-file builds
-emit the `require` but no vendor file. Bundled output is scanned for browser
+emit the `require` but no vendor file. A package imported by exactly one
+subpackage lands in that subpackage's `vendor/` instead of the main
+package's — main-package weight (the hard 2MB one) only carries vendors
+that main or several packages actually share. Bundled output is scanned for browser
 APIs WeChat lacks (`window`, `document`, `navigator`, `localStorage`, …) —
 hits warn with **M1028**. The scan is a heuristic — bare existence
 checks (`typeof window`) pass, but member reads used defensively
