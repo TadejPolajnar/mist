@@ -91,6 +91,77 @@ fn bundled_cli() -> Option<std::path::PathBuf> {
     path.exists().then_some(path)
 }
 
+fn standalone_cache_path() -> std::path::PathBuf {
+    let name = if cfg!(windows) { "tailwindcss.exe" } else { "tailwindcss" };
+    match crate::npm_bundle::home_dir() {
+        Some(home) => std::path::PathBuf::from(home)
+            .join(".cache")
+            .join("mistc")
+            .join("tw-standalone")
+            .join(name),
+        None => std::env::temp_dir().join("mistc-tw-standalone").join(name),
+    }
+}
+
+fn standalone_asset() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("tailwindcss-macos-arm64"),
+        ("macos", "x86_64") => Some("tailwindcss-macos-x64"),
+        ("linux", "x86_64") => Some("tailwindcss-linux-x64"),
+        ("linux", "aarch64") => Some("tailwindcss-linux-arm64"),
+        ("windows", "x86_64") => Some("tailwindcss-windows-x64.exe"),
+        _ => None,
+    }
+}
+
+fn ensure_standalone() -> Result<std::path::PathBuf, String> {
+    let bin = standalone_cache_path();
+    if bin.exists() {
+        return Ok(bin);
+    }
+    let asset = standalone_asset().ok_or(
+        "no standalone Tailwind build for this platform — install Node.js + npm instead",
+    )?;
+    if let Some(parent) = bin.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    eprintln!("downloading the Tailwind v4 standalone binary (first run, ~40 MB, needs network)…");
+    let url = std::env::var("MISTC_TW_STANDALONE_URL").unwrap_or_else(|_| {
+        format!(
+            "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/{}",
+            asset
+        )
+    });
+    let tmp = bin.with_extension("download");
+    let out = Command::new("curl")
+        .args(["-fsSL", "--retry", "2", "-o"])
+        .arg(&tmp)
+        .arg(&url)
+        .output()
+        .map_err(|e| format!("curl not available: {}", e))?;
+    if !out.status.success() {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!(
+            "Tailwind standalone download failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&tmp, &bin).map_err(|e| e.to_string())?;
+    Ok(bin)
+}
+
+fn npm_available() -> bool {
+    crate::npm_bundle::tool_command("npm")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
 fn bundled_root(cli: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut p = cli;
     while let Some(parent) = p.parent() {
@@ -113,18 +184,32 @@ fn run_cli_v4(classes: &[String], theme: Option<&str>) -> Result<String, String>
         }
     }
     let bundled = bundled_cli();
-    if bundled.is_none() && !dir.join("node_modules/@tailwindcss/cli").exists() {
-        eprintln!("installing Tailwind v4 CLI (first run, ~20 MB, needs network)…");
-        fs::write(dir.join("package.json"), "{ \"name\": \"mistc-tw\", \"private\": true }")
-            .map_err(|e| e.to_string())?;
-        // pinned to v4 — the postprocessor is written against v4 output shape
-        let out = crate::npm_bundle::tool_command("npm")
-            .args(["install", "--no-audit", "--no-fund", "tailwindcss@^4", "@tailwindcss/cli@^4"])
-            .current_dir(&dir)
-            .output()
-            .map_err(|e| format!("npm not available: {}", e))?;
-        if !out.status.success() {
-            return Err(format!("npm install failed: {}", String::from_utf8_lossy(&out.stderr)));
+    let mut standalone: Option<std::path::PathBuf> = None;
+    if bundled.is_none() {
+        let force = std::env::var_os("MISTC_TW_STANDALONE").is_some_and(|v| v == "1");
+        let node_cli_cached = dir.join("node_modules/@tailwindcss/cli").exists();
+        if force {
+            standalone = Some(ensure_standalone()?);
+        } else if !node_cli_cached {
+            let cached = standalone_cache_path();
+            if cached.exists() {
+                standalone = Some(cached);
+            } else if npm_available() {
+                eprintln!("installing Tailwind v4 CLI (first run, ~20 MB, needs network)…");
+                fs::write(dir.join("package.json"), "{ \"name\": \"mistc-tw\", \"private\": true }")
+                    .map_err(|e| e.to_string())?;
+                // pinned to v4 — the postprocessor is written against v4 output shape
+                let out = crate::npm_bundle::tool_command("npm")
+                    .args(["install", "--no-audit", "--no-fund", "tailwindcss@^4", "@tailwindcss/cli@^4"])
+                    .current_dir(&dir)
+                    .output()
+                    .map_err(|e| format!("npm not available: {}", e))?;
+                if !out.status.success() {
+                    return Err(format!("npm install failed: {}", String::from_utf8_lossy(&out.stderr)));
+                }
+            } else {
+                standalone = Some(ensure_standalone()?);
+            }
         }
     }
     // Tailwind resolves `@import "tailwindcss/…"` relative to the importing file,
@@ -150,16 +235,20 @@ fn run_cli_v4(classes: &[String], theme: Option<&str>) -> Result<String, String>
     fs::write(io.join("input.css"), input_css).map_err(|e| e.to_string())?;
     let input = io.join("input.css");
     let output = io.join("out.css");
-    let mut cmd = match &bundled {
-        Some(cli) => {
-            let mut c = Command::new("node");
-            c.arg(cli);
-            c
-        }
-        None => {
-            let mut c = crate::npm_bundle::tool_command("npx");
-            c.arg("@tailwindcss/cli");
-            c
+    let mut cmd = if let Some(bin) = &standalone {
+        Command::new(bin)
+    } else {
+        match &bundled {
+            Some(cli) => {
+                let mut c = Command::new("node");
+                c.arg(cli);
+                c
+            }
+            None => {
+                let mut c = crate::npm_bundle::tool_command("npx");
+                c.arg("@tailwindcss/cli");
+                c
+            }
         }
     };
     let out = cmd

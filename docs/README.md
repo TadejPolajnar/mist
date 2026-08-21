@@ -19,7 +19,7 @@ disagree, these docs are right.
 
 ## Getting started
 
-Prerequisites: Node.js + npm (Tailwind + tests), WeChat DevTools.
+Prerequisites: WeChat DevTools. Node.js + npm are needed for `mistc test`; builds work without them — `mistc` falls back to Tailwind's standalone binary (one ~40 MB download, cached).
 
 ```sh
 npm install -g mist-lang       # mistc + mistc-lsp, prebuilt for macOS/Linux/Windows

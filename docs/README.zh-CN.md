@@ -18,7 +18,7 @@ Mist 是一门**面向微信小程序的组件语言与编译器**：你编写 A
 
 ## 快速上手
 
-环境要求：Node.js + npm（Tailwind 与测试需要）、微信开发者工具。
+环境要求：微信开发者工具。`mistc test` 需要 Node.js + npm；构建本身不需要——没有 npm 时 `mistc` 会自动回退到 Tailwind 独立二进制（约 40 MB，一次性下载并缓存）。
 
 ```sh
 npm install -g mist-lang       # mistc + mistc-lsp，macOS/Linux/Windows 预编译
