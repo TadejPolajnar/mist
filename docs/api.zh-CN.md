@@ -85,7 +85,7 @@ mistc test [dir] --snapshots [--update] [--filter <substring>]
 ```
 dist/
 ├── app.js  app.json  app.wxss  sitemap.json
-├── mist-rt.js                  # the runtime (~12 KB)
+├── mist-rt.js                  # the runtime (~9 KB, comment-stripped)
 ├── tw-shared.wxss              # tailwind utilities (imported by every unit)
 ├── tw-theme.wxss               # page{} theme vars (imported by pages only)
 ├── pages/<name>/<name>.{js,wxml,wxss,json}

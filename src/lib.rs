@@ -13,6 +13,27 @@ use std::path::{Path, PathBuf};
 
 pub const RUNTIME: &str = include_str!("../runtime/mist-rt.js");
 
+/// The shipped runtime: `runtime/mist-rt.js` with full-line comments, blank
+/// lines and indentation stripped (~25% smaller). Names and statement order
+/// survive, so device stack traces stay readable; the commented source is the
+/// repo file. The runtime deliberately avoids multi-line template literals —
+/// line-level stripping would corrupt them.
+pub fn runtime_js() -> &'static str {
+    static STRIPPED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    STRIPPED.get_or_init(|| {
+        let mut out = String::with_capacity(RUNTIME.len());
+        for line in RUNTIME.lines() {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with("//") || t.starts_with("/*") || t.starts_with('*') {
+                continue;
+            }
+            out.push_str(t);
+            out.push('\n');
+        }
+        out
+    })
+}
+
 #[derive(Debug)]
 pub struct Output {
     pub wxml: String,

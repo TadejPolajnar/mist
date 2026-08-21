@@ -434,7 +434,11 @@ fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bo
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).expect("cannot create output dir");
         }
-        fs::write(p, content).unwrap();
+        // unchanged files stay untouched — watch rebuilds fire fewer DevTools
+        // file events, so the simulator reloads less
+        if fs::read(&p).ok().as_deref() != Some(content.as_bytes()) {
+            fs::write(p, content).unwrap();
+        }
         written.push(rel);
     };
     if !project.tailwind_css.is_empty() {
@@ -480,7 +484,7 @@ fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bo
             println!("  {}{}", f.out_path, tag);
         }
     }
-    emit(&mut written, "mist-rt.js".into(), mistc::RUNTIME);
+    emit(&mut written, "mist-rt.js".into(), mistc::runtime_js());
 
     if let Some(app) = &project.app {
         emit(&mut written, "app.js".into(), &app.js);
