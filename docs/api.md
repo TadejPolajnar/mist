@@ -91,6 +91,7 @@ Static object literal → the unit's `.json` (page window config, or app-level
 mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
 mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
+mistc test [dir] --snapshots [--update] [--filter <substring>]
 ```
 
 - **`init`** → scaffolds `<name>/` (app.mist, a todo page, a sample test,
@@ -109,6 +110,10 @@ mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
   minimal openable app shell (`App({})`, `app.json`, tourist appid config).
 - `-o` defaults to `dist`. Errors exit 1 with `M`-coded messages; `M1002`/`M1006`
   are non-fatal stderr warnings.
+- Project builds end with a package-size summary
+  (`size: main 412KB, total 412KB`); **M1029** warns when a package crosses
+  WeChat's upload limits (2MB main/subpackage, 20MB total) or the opt-in
+  `config.sizeBudget` in `app.mist` (`'1.5MB'`/`'800KB'`).
 
 ## Emitted output (project build)
 

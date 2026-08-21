@@ -204,7 +204,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
    instead when that's statically extractable via
    `frontmatter::config_tab_bar_page_paths`; flat/single-file builds compile
    `navigate()` calls with no route-list check at all — no route set exists).
-   M1001–M1028 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs; M1027 used feature exceeds `config.minLibVersion` — curated `SINCE` table in tag_meta.rs, opt-in, warning-tier; app.mist's declaration is the project-wide floor, per-unit overrides, and inlined template units report their own M1023/24/27 hits via `meta_warning_texts`; M1028 bundled npm package references browser APIs WeChat lacks — token scan in `npm_bundle::foreign_api_hits`, suppressed via app.mist `config.trustedPackages`. M1026's per-call escape hatch is `raw(x)` — `RawRewrite` in frontmatter.rs strips the wrapper and prepends a conservative full-value re-sync of the wrapped reactive root; works in pages, components and store modules. `config.behaviors` (component-only) accepts `wx://` built-ins only).
+   M1001–M1029 allocated (M1023 unknown native event / M1024 unknown native attribute — driven by `src/tag_meta.rs`, suppressed via `config.customAttrs`; M1025 `[param].mist` route page missing its `const <param> = state(...)`; M1026 reactive value passed to an npm import — the opaque-boundary rule, `src/npm_bundle.rs` + `NpmBoundaryCheck` in frontmatter.rs; M1027 used feature exceeds `config.minLibVersion` — curated `SINCE` table in tag_meta.rs, opt-in, warning-tier; app.mist's declaration is the project-wide floor, per-unit overrides, and inlined template units report their own M1023/24/27 hits via `meta_warning_texts`; M1028 bundled npm package references browser APIs WeChat lacks — token scan in `npm_bundle::foreign_api_hits`, suppressed via app.mist `config.trustedPackages`. M1026's per-call escape hatch is `raw(x)` — `RawRewrite` in frontmatter.rs strips the wrapper and prepends a conservative full-value re-sync of the wrapped reactive root; works in pages, components and store modules. `config.behaviors` (component-only) accepts `wx://` built-ins only. M1029 package exceeds size limit — build-end summary in main.rs `report_package_sizes` against WeChat's 2MB/2MB/20MB limits or app.mist's opt-in `config.sizeBudget`, warning-tier, byte counts approximate).
    Frontmatter TS is type-stripped (`strip_types`, whitespace-
    preserving blanking) before analysis, so annotations never reach emitted JS.
    `tests/diagnostics.rs` asserts on message substrings — reformatting breaks it.
@@ -257,8 +257,9 @@ rebinds cancel, covers for-of and iterator-callback params).
 
 **Design-only (do not assume these exist):** static *subtree*
 hoisting (§8.4 — distinct from §4.2 expression hoisting, which ships);
-`mist.config.ts` as a file; `mist trace`; package-size budgets.
-Now shipped, don't re-add here: snapshot testing (`mistc test
+`mist.config.ts` as a file; `mist trace`.
+Now shipped, don't re-add here: package-size budgets (M1029 +
+`config.sizeBudget`), snapshot testing (`mistc test
 --snapshots`/`--update` vs `snapshots/` goldens), `<style scoped>`
 (per-unit `--<name>` suffixing in `src/scope.rs`), `<style global>`
 (hoists to app.wxss, flips component default styleIsolation to

@@ -68,6 +68,7 @@ WXML 无法求值的模板绑定——函数调用、模板字符串、可选链
 mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
 mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
+mistc test [dir] --snapshots [--update] [--filter <substring>]
 ```
 
 - **`init`** → 生成 `<name>/`（app.mist、一个待办页面、一个示例测试、project.config.json、`mist.d.ts` + `tsconfig.json` + `package.json`，用于编辑器类型提示）。
@@ -77,6 +78,7 @@ mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
 - **目录** → 项目构建。需要 `<dir>/app.mist` 和 `<dir>/pages/*.mist`（index 是启动页）。组件和 store 通过导入发现。输出使用微信目录布局。
 - **单文件** → 平铺构建一个页面及其导入；`--app` 附带一个最小可打开的应用壳（`App({})`、`app.json`、游客 appid 配置）。
 - `-o` 默认为 `dist`。错误以退出码 1 结束并带 `M` 编码消息；`M1002`/`M1006` 是非致命的 stderr 警告。
+- 项目构建结束时打印包体积摘要（`size: main 412KB, total 412KB`）；当包越过微信上传限制（主包/分包 2MB、总计 20MB）或 `app.mist` 中可选的 `config.sizeBudget`（`'1.5MB'`/`'800KB'`）时，以 **M1029** 告警。
 
 ## 产物输出（项目构建）
 

@@ -4,7 +4,7 @@ Errors carry a code and a fix; M1001, M1004, M1007, M1011, M1013, M1017 and
 M1021 and M1022 include file line:col and M1010 the line (other codes report the file
 path only; M1015 reports line:col for import-shape errors and file path only
 for the `pluginComponents` value/collision checks). Warnings (`M1002`,
-`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`, `M1027`, `M1028`) go to stderr and
+`M1006`, `M1008`, `M1012`, `M1016`, `M1018`, `M1019`, `M1020`, `M1023`, `M1024`, `M1027`, `M1028`, `M1029`) go to stderr and
 never fail the build. M1020 is the exception among warnings above in name
 only — it is a warning when the tab bar file exists without the config flag,
 but an error when the flag is set without the file (see below).
@@ -483,3 +483,26 @@ export const config = { trustedPackages: ['fuse.js'] }
 ```
 
 Warning-tier: the build still succeeds either way.
+
+## M1029 — package exceeds its size limit
+
+Every project build ends with a size summary
+(`size: main 1.2MB, shop 340KB, total 1.5MB`) and warns when a package
+crosses WeChat's upload limits — 2MB for the main package, 2MB per
+subpackage, 20MB total:
+
+```
+M1029: main package is 2.31MB — exceeds WeChat's per-package limit (2.00MB)
+```
+
+Declare `config.sizeBudget` in `app.mist` (app-level only, rejected
+elsewhere) to warn earlier, at your own per-package threshold:
+
+```ts
+export const config = { sizeBudget: '1.5MB' }   // or '800KB'
+```
+
+The count sums the emitted files; WeChat measures the uploaded package, so
+the numbers are close but not byte-exact — which is why this is
+warning-tier. Fix by moving pages into `src/packages/` subpackages,
+trimming npm vendor weight, or shrinking `assets/`.
