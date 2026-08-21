@@ -44,7 +44,7 @@ cd my-app
 mistc build src --watch      # 保存即重编译 · 在微信开发者工具中导入 my-app/
 ```
 
-编写 `.mist` 单文件组件（TypeScript frontmatter + 类 JSX 模板 + Tailwind），得到普通的 `Page()`/`Component()` 小程序代码，核心是**路径精确的 `setData`**：编译器静态追踪每一次状态变更，并生成它所改变的精确数据路径。没有虚拟 DOM，没有运行时树 diff，运行时仅约 10 KB（gzip 后 3.2 KB）。
+编写 `.mist` 单文件组件（TypeScript frontmatter + 类 JSX 模板 + Tailwind），得到普通的 `Page()`/`Component()` 小程序代码，核心是**路径精确的 `setData`**：编译器静态追踪每一次状态变更，并生成它所改变的精确数据路径。没有虚拟 DOM，没有运行时树 diff，运行时仅约 12 KB（gzip 后 3.8 KB）。
 
 ```
 ┌──────────────┐     mistc (Rust)      ┌──────────────────────────────┐
@@ -97,7 +97,7 @@ function toggle(id) {
 | <img src="examples/food/screenshot.png" width="220" alt="雾茶" /> | <img src="examples/portfolio/screenshot.png" width="220" alt="雾投" /> | <img src="examples/kanban/screenshot.png" width="220" alt="雾板" /> |
 | 持久化购物车与订单、分包结算页、tab 图标、`migrate` 迁移 | 13 节点派生图、键控 diff、确定性行情 | 键控排序、跨 store 派生、在制限制 |
 
-每个示例都带 README、门禁测试套件和可直接导入开发者工具的 `project.config.json`。
+另外还有：[雾讯 · 信息流](examples/feed)（setData 预算实验台 + 已提交的编译器快照）、[雾账 · 记账](examples/ledger)（持久化记账应用）、[雾语 · i18n](examples/i18n)（运行时切换语言，[docs/i18n.zh-CN.md](docs/i18n.zh-CN.md) 配方的可运行版本）。每个示例都带 README、测试和可直接导入开发者工具的 `project.config.json`。
 
 ## 参与编译器开发
 
@@ -115,6 +115,8 @@ cargo install --path crates/mistc-lsp   # 从源码装 LSP（npm install -g mist
 ```
 mistc init <name>                                        # 脚手架新项目
 mistc build <src目录 | 入口.mist> [-o <输出目录>] [--app] [--watch]
+mistc test [目录] [--filter <子串>] [--watch]             # Node 环境运行 tests/*.test.js
+mistc test [目录] --snapshots [--update]                  # 用 snapshots/ 基准固定生成产物
 ```
 
 - **`init`** → 生成 `<name>/`：`src/app.mist`、一个待办页面、`project.config.json`（开发者工具可直接导入）、`.gitignore`、`mist.d.ts` + `tsconfig.json` + `package.json`（含 `miniprogram-api-typings`，编辑器类型提示）。
@@ -122,6 +124,7 @@ mistc build <src目录 | 入口.mist> [-o <输出目录>] [--app] [--watch]
 - **单文件构建** → 平铺输出；`--app` 附带一个最小可打开的应用壳。
 - **`--watch`** → 保存 `.mist`/`.ts` 即重编译（带防抖，排除输出目录）。
 - 警告（`M1002` 未知 class、`M1006` 不支持的选择器、`M1008` 缺少 key 的列表、`M1012` 配置未声明对应钩子）输出到 stderr；错误带 `M` 编码、`.mist` 行列号和修复提示。
+- **`test`** → 编译 `src/` 并在 Node 环境中运行 `tests/*.test.js`；`--snapshots` 改为将每个生成文件与已提交的基准对比。见 [docs/testing.zh-CN.md](docs/testing.zh-CN.md)。
 - `mistc --help` / `mistc --version` 如你所料。
 
 ## 项目结构
@@ -201,7 +204,7 @@ src/
 
 ## 工作原理
 
-约 5k 行 Rust（[完整架构图见 AGENTS.md](AGENTS.md)）：
+约 1 万行 Rust（[完整架构图见 AGENTS.md](AGENTS.md)）：
 
 1. **`sfc`** 切分文件（记录行偏移供诊断使用）
 2. **`frontmatter`** 用 [oxc](https://oxc.rs) 解析 TS，做*基于 span 的源码改写*——不做代码生成；变更经 AST 访问器变为路径写入，读取经受控正则改写
@@ -209,18 +212,17 @@ src/
 4. **`tailwind_cli`** 运行真实 Tailwind 并把现代 CSS 重写为 WXSS
 5. **`lib`** 编排项目图（组件、内联决策、store、目录布局），**`main`** 写出微信目录树
 
-生成的 JS 刻意保持可读（微信开发者工具无法加载外部 source map）：普通的 `Page({...})` 对象、保留你的命名，外加 `require('mist-rt.js')`——约 9 KB 的运行时，负责批量合并、带键 diff、store 订阅，以及 setData 被拒绝时的状态回滚。
+生成的 JS 刻意保持可读（微信开发者工具无法加载外部 source map）：普通的 `Page({...})` 对象、保留你的命名，外加 `require('mist-rt.js')`——约 12 KB 的运行时，负责批量合并、带键 diff、store 订阅，以及 setData 被拒绝时的状态回滚。
 
 ## 当前状态
 
-端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断——350+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、Node 测试环境（`mistc test`，支持 `setData` payload 大小断言）、原生标签属性/事件校验（M1023/M1024）、`[id].mist` 路由参数页面、编辑器类型（`mist.d.ts` + wx 类型），以及 `M1001` 别名变更分析。以及带编译器强制不透明边界的 npm 导入（M1026 + esbuild vendor 打包）。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
+端到端可用并在微信开发者工具中验证：页面、组件、slot、内联、store、Tailwind v4、项目构建、诊断——420+ 个测试（以 `cargo test` 为准）。它仍是**原型**，但语言核心已完整：路径精确 setData 的响应式、带键字段级 diff 的 derived、死数据消除、组件/slot/内联、store、`value:bind` 输入、模板表达式提升（含按条目）、Tailwind v4、经 `app.mist` 配置的 tabBar、查询参数路由、完整交互生命周期（下拉刷新、触底、分享/朋友圈钩子、组件 pageLifetimes）、可选 store 持久化、`<style scoped>`、Node 测试环境（`mistc test`，支持 `setData` payload 大小断言）、原生标签属性/事件校验（M1023/M1024）、`[id].mist` 路由参数页面、编辑器类型（`mist.d.ts` + wx 类型），`M1001` 别名变更分析、带编译器强制不透明边界的 npm 导入（M1026 + esbuild vendor 打包、`raw()` 逃生舱、M1028 浏览器 API 扫描与 `trustedPackages`）、`wx://` 内置 behavior、基础库版本检查（`minLibVersion`/M1027）、嵌套循环调用提升、`<style global>`、编译器快照基准（`mistc test --snapshots`），以及包体积预算与构建结束时的体积摘要（M1029 + `sizeBudget`）。精确的「已实现 vs 规范」对照表见 [AGENTS.md](AGENTS.md)。
 
 ## 路线图
 
 1. 真机基准数据（需要已注册的 AppID）
-2. 嵌套循环提升
-3. 零 Node 方案：打包 Tailwind 独立二进制
-4. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)（`tadejpolajnar.mist-lang`，商店已上架）均已可用
+2. 零 Node 方案：打包 Tailwind 独立二进制
+3. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)（`tadejpolajnar.mist-lang`，商店已上架）均已可用
 
 ## 许可证
 

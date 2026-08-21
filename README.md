@@ -24,7 +24,7 @@
 
 ---
 
-Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template + Tailwind), get plain `Page()`/`Component()` mini-program code with **path-precise `setData`**: the compiler statically tracks every state mutation and emits the exact data path it changes. No virtual DOM, no runtime tree diffing, a ~10 KB runtime (3.2 KB gzipped).
+Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template + Tailwind), get plain `Page()`/`Component()` mini-program code with **path-precise `setData`**: the compiler statically tracks every state mutation and emits the exact data path it changes. No virtual DOM, no runtime tree diffing, a ~12 KB runtime (3.8 KB gzipped).
 
 ```
 ┌──────────────┐     mistc (Rust)      ┌──────────────────────────────┐
@@ -120,6 +120,8 @@ cargo install --path crates/mistc-lsp   # LSP from source (npm install -g mist-l
 ```
 mistc init <name>                                        # scaffold a new project
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]   # -o defaults to dist/
+mistc test [dir] [--filter <substr>] [--watch]           # Node harness for tests/*.test.js
+mistc test [dir] --snapshots [--update]                  # pin emitted output vs snapshots/
 ```
 
 - **`init`** → creates `<name>/` with `src/app.mist`, a todo page, `project.config.json` (DevTools-ready), `.gitignore`, and editor typing (`mist.d.ts`, `tsconfig.json`, `package.json` with `miniprogram-api-typings`).
@@ -127,6 +129,7 @@ mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]   # -o defaul
 - **File** → single-entry build, flat output; `--app` adds a minimal DevTools-openable shell.
 - **`--watch`** → rebuilds on every `.mist`/`.ts` save (debounced; output dir excluded).
 - Warnings (`M1002` unknown class, `M1006` unsupported selector, `M1008` keyless list, `M1012` unhandled config) go to stderr; errors carry `M`-codes with `.mist` line:col and fix-it hints.
+- **`test`** → compiles `src/` and runs `tests/*.test.js` in a Node harness; `--snapshots` diffs every emitted file against committed goldens instead. See [docs/testing.md](docs/testing.md).
 - `mistc --help` / `mistc --version` do what you expect.
 
 ## Project layout
@@ -217,7 +220,7 @@ machine. The full story behind these numbers is in the
 
 ## How it works
 
-~8.7k lines of Rust ([full architecture map in AGENTS.md](AGENTS.md)):
+~10k lines of Rust ([full architecture map in AGENTS.md](AGENTS.md)):
 
 1. **`sfc`** splits the file (tracking line offsets for diagnostics)
 2. **`frontmatter`** parses TS with [oxc](https://oxc.rs) and does *span-based source rewriting* — no codegen; mutations become path writes via an AST visitor, reads via guarded regexes
@@ -225,18 +228,17 @@ machine. The full story behind these numbers is in the
 4. **`tailwind_cli`** runs real Tailwind and rewrites its modern CSS for WXSS
 5. **`lib`** orchestrates the project graph (components, inlining decisions, stores, layouts) and **`main`** writes the WeChat directory tree
 
-The emitted JS is deliberately readable (WeChat DevTools can't load source maps): plain `Page({...})` objects with your names intact, plus a `require('mist-rt.js')` — the ~10 KB runtime that does batching, keyed diffs, store subscriptions, and rollback on rejected setData.
+The emitted JS is deliberately readable (WeChat DevTools can't load source maps): plain `Page({...})` objects with your names intact, plus a `require('mist-rt.js')` — the ~12 KB runtime that does batching, keyed diffs, store subscriptions, and rollback on rejected setData.
 
 ## Status
 
-Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics — 350+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), native-tag attribute/event validation (M1023/M1024), `[id].mist` route-param pages, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis, and npm imports with a compiler-enforced opaque boundary (M1026 + esbuild vendor bundling). See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
+Working end-to-end and validated in WeChat DevTools: pages, components, slots, inlining, stores, Tailwind v4, project builds, diagnostics — 420+ tests (`cargo test` is the source of truth). It is a **prototype**, but the core language is complete: reactivity with path-precise setData, derived values with keyed field-level diffing, dead-data elimination, components/slots/inlining, stores, `value:bind` inputs, template expression hoisting (incl. per-item), Tailwind v4, tab bar via `app.mist` config, query-param routing, the full interaction lifecycle (pull-down refresh, reach-bottom, share/timeline hooks, component pageLifetimes), opt-in store persistence, `<style scoped>`, a Node test harness (`mistc test` with `setData` payload-size assertions), native-tag attribute/event validation (M1023/M1024), `[id].mist` route-param pages, editor types (`mist.d.ts` + wx typings), and `M1001` aliased-mutation analysis, npm imports with a compiler-enforced opaque boundary (M1026 + esbuild vendor bundling, the `raw()` escape hatch, and an M1028 browser-API scan with `trustedPackages`), `wx://` built-in behaviors, base-library since-version checks (`minLibVersion`/M1027), nested-loop call hoisting, `<style global>`, compiler snapshot goldens (`mistc test --snapshots`), and package-size budgets with a build-end size summary (M1029 + `sizeBudget`). See [AGENTS.md](AGENTS.md) for the precise implemented-vs-spec table.
 
 ## Roadmap
 
 1. Real-device benchmark numbers (needs a registered AppID)
-2. Nested-loop hoisting
-3. Zero-Node option: bundle Tailwind's standalone binary
-4. `mistc-lsp` — diagnostics (including workspace-wide re-checks of importing
+2. Zero-Node option: bundle Tailwind's standalone binary
+3. `mistc-lsp` — diagnostics (including workspace-wide re-checks of importing
    pages when a store or component file changes), completions (frontmatter symbols +
    template tags/attributes/events/component props), hover, go-to-definition,
    signature help, incremental sync, rename (including cross-file store

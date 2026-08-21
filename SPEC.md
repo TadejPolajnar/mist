@@ -384,8 +384,9 @@ polish: `M1001` aliased state mutation, `M1002` unsupported Tailwind utility,
   may bare-import; esbuild bundles to `dist/vendor/`; reactive values crossing into
   imported functions are M1026 errors — copy into plain locals first. Store-module
   imports ship; bundled output is scanned for browser APIs WeChat lacks
-  (M1028 warning, `trustedPackages` allowlist). A `raw()` escape hatch
-  remains future work.*
+  (M1028 warning, `trustedPackages` allowlist). The `raw()` escape hatch
+  ships: the wrapper compiles away and the reactive root is conservatively
+  re-synced after the call.*
 - **Testing:** compiler snapshot tests (`.mist` → emitted WXML/JS) are first-class
   (`mistc test --snapshots`); logic in stores/helpers is plain TS, unit-testable with
   vitest without WeChat.

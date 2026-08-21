@@ -16,7 +16,7 @@ and the launch write-up it links.
 
 ## Architecture map
 
-~9.1k lines of Rust (9,079 in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
+~11.8k lines of Rust (~10.1k in `src/`). Deps: `oxc_{allocator,parser,ast,span}` **pinned 0.36**
 (bump in lockstep; span semantics are load-bearing) + `regex`. No serde — JSON is
 hand-emitted.
 
@@ -91,7 +91,7 @@ cargo run -- build examples/project/src -o dist    # canonical example
 cargo run -- build examples/project/src -o dist --watch   # rebuild on save
 cargo run -- init my-app                      # scaffold a new project
 cargo run -- test my-app                      # run the app's tests/*.test.js in the Node harness (--watch reruns on change)
-cargo test                                    # 200+ tests — spawns node, npm, npx
+cargo test                                    # 400+ tests — spawns node, npm, npx
 cargo test --test compile                     # pure-Rust subset (no node needed)
 ```
 
@@ -224,7 +224,7 @@ milestone: `feat:` → subagent review → `fix: address … review findings`.
 10. **PascalCase component filenames** → kebab-case output (`TodoItem.mist` →
     `components/todo-item/todo-item.*`); pages keep their stem.
 
-## Test suite map (~360 tests; counts drift — trust cargo)
+## Test suite map (~430 tests; counts drift — trust cargo)
 
 | File | Covers |
 |---|---|
