@@ -532,9 +532,65 @@ fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bo
 
     prune_stale(outdir, &written);
     if !quiet {
+        if input.is_dir() && project.app.is_some() {
+            report_package_sizes(outdir, &written, project.size_budget);
+        }
         println!("compiled {} file(s) → {}/", files.len(), outdir.display());
     }
     true
+}
+
+const WECHAT_PACKAGE_LIMIT: u64 = 2 * 1024 * 1024;
+const WECHAT_TOTAL_LIMIT: u64 = 20 * 1024 * 1024;
+
+fn human_size(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.2}MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{}KB", bytes.div_ceil(1024))
+    }
+}
+
+/// Build-end package-size summary + M1029 warnings against WeChat's upload
+/// limits (2MB main, 2MB per subpackage, 20MB total) and the opt-in
+/// `config.sizeBudget`. Byte counts are of the emitted files — WeChat measures
+/// the uploaded package, so treat the numbers as close, not exact.
+fn report_package_sizes(outdir: &Path, written: &[String], budget: Option<u64>) {
+    let mut main: u64 = 0;
+    let mut subs: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for rel in written {
+        let size = fs::metadata(outdir.join(rel)).map(|m| m.len()).unwrap_or(0);
+        match rel.strip_prefix("packages/").and_then(|r| r.split('/').next()) {
+            Some(pkg) => *subs.entry(pkg.to_string()).or_insert(0) += size,
+            None => main += size,
+        }
+    }
+    let total: u64 = main + subs.values().sum::<u64>();
+    let mut parts = vec![format!("main {}", human_size(main))];
+    parts.extend(subs.iter().map(|(pkg, s)| format!("{} {}", pkg, human_size(*s))));
+    parts.push(format!("total {}", human_size(total)));
+    println!("  size: {}", parts.join(", "));
+
+    let warn = |label: &str, size: u64, limit: u64, what: &str| {
+        if size > limit {
+            eprintln!(
+                "warning M1029: {} is {} — exceeds {} ({}); byte counts are approximate, WeChat measures the uploaded package\n  help: split content across src/packages/ subpackages, trim npm/vendor weight, or shrink assets/",
+                label,
+                human_size(size),
+                what,
+                human_size(limit)
+            );
+        }
+    };
+    let (pkg_limit, pkg_what) = match budget {
+        Some(b) if b < WECHAT_PACKAGE_LIMIT => (b, "config.sizeBudget"),
+        _ => (WECHAT_PACKAGE_LIMIT, "WeChat's per-package limit"),
+    };
+    warn("main package", main, pkg_limit, pkg_what);
+    for (pkg, size) in &subs {
+        warn(&format!("subpackage '{}'", pkg), *size, pkg_limit, pkg_what);
+    }
+    warn("total output", total, WECHAT_TOTAL_LIMIT, "WeChat's total limit");
 }
 
 fn copy_dir_verbatim(src_dir: &Path, outdir: &Path, rel_prefix: &str, written: &mut Vec<String>) {

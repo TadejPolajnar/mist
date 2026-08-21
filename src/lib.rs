@@ -398,6 +398,11 @@ fn compile_unit_full_route(
             "config.trustedPackages is app-level — declare it in app.mist so the whole project's bundles share one allowlist".to_string(),
         );
     }
+    if analysis.size_budget.is_some() {
+        return Err(
+            "config.sizeBudget is app-level — declare it in app.mist; packages are measured whole".to_string(),
+        );
+    }
     let route_seed = match route_param {
         Some(param) => match analysis.states.iter().find(|s| s.name == param) {
             Some(state) => Some((param, state.bound)),
@@ -687,6 +692,8 @@ pub struct Project {
     pub warnings: Vec<String>,
     /// class → first source file that used it (for M1002 attribution)
     pub class_sources: std::collections::BTreeMap<String, String>,
+    /// app.mist's `config.sizeBudget` in bytes — opt-in M1029 threshold
+    pub size_budget: Option<u64>,
     /// present for directory builds: app.js/app.json/app.wxss
     pub app: Option<AppShell>,
 }
@@ -741,6 +748,7 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
     let mut ctx = new_project_ctx(Layout::Nested);
     let app_pre = sfc::split(&app_source).ok().and_then(|s| frontmatter::analyze(s.frontmatter).ok());
     ctx.min_lib = app_pre.as_ref().and_then(|a| a.min_lib_version.clone());
+    ctx.size_budget = app_pre.as_ref().and_then(|a| a.size_budget);
     let trusted_packages: Vec<String> =
         app_pre.map(|a| a.trusted_packages).unwrap_or_default();
     ctx.theme = std::fs::read_to_string(src.join("theme.css")).ok();
@@ -995,6 +1003,7 @@ fn new_project_ctx(layout: Layout) -> ProjectCtx {
     ProjectCtx {
         npm_packages: std::collections::BTreeSet::new(),
         min_lib: None,
+        size_budget: None,
         seen: Vec::new(),
         files: Vec::new(),
         classes: Vec::new(),
@@ -1274,6 +1283,7 @@ fn finish_project(mut ctx: ProjectCtx, mut app: Option<AppShell>) -> Result<Proj
         dropped_selectors,
         warnings: ctx.warnings,
         class_sources: ctx.class_sources,
+        size_budget: ctx.size_budget,
         app,
     })
 }
@@ -1290,6 +1300,8 @@ struct ProjectCtx {
     /// app.mist's `config.minLibVersion` — the project-wide floor units inherit
     /// unless they declare their own
     min_lib: Option<String>,
+    /// app.mist's `config.sizeBudget` in bytes — opt-in M1029 threshold
+    size_budget: Option<u64>,
     seen: Vec<PathBuf>,
     files: Vec<CompiledFile>,
     classes: Vec<String>,

@@ -548,3 +548,27 @@ fn snapshot_mode_writes_diffs_and_updates() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("does not combine"), "stderr must explain");
 }
+
+#[test]
+fn build_reports_sizes_and_m1029_over_budget() {
+    let dir = std::env::temp_dir().join("mist-cli-size-budget");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    let root = dir.join("app");
+
+    let out = Command::new(bin()).args(["build", "src"]).current_dir(&root).output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success());
+    assert!(stdout.contains("size: main"), "stdout:\n{}", stdout);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("M1029"));
+
+    let app = root.join("src/app.mist");
+    let src = std::fs::read_to_string(&app).unwrap();
+    std::fs::write(&app, src.replace("export const config = {", "export const config = {\n  sizeBudget: '1KB',")).unwrap();
+    let out = Command::new(bin()).args(["build", "src"]).current_dir(&root).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "over-budget is warning-tier, not an error");
+    assert!(stderr.contains("M1029") && stderr.contains("config.sizeBudget"), "stderr:\n{}", stderr);
+}

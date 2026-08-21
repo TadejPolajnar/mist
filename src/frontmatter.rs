@@ -42,6 +42,8 @@ pub struct Analysis {
     pub min_lib_version: Option<String>,
     /// `config.trustedPackages` — npm packages exempt from the M1028 foreign-API scan
     pub trusted_packages: Vec<String>,
+    /// `config.sizeBudget` — opt-in per-package byte budget for M1029, app.mist only
+    pub size_budget: Option<u64>,
     /// bare npm imports (SPEC §12 boundary rule) — bundled to `vendor/` in project builds
     pub npm_imports: Vec<NpmImport>,
     /// `config.virtualHost` — component-only; removes the wrapper node
@@ -523,6 +525,7 @@ pub fn analyze_with_stores_bound(
     let mut custom_tags_raw: Option<String> = None;
     let mut custom_attrs_raw: Option<String> = None;
     let mut min_lib_version: Option<String> = None;
+    let mut size_budget: Option<u64> = None;
     let mut trusted_packages_raw: Option<String> = None;
     let mut component_options_raw: Option<String> = None;
     let mut plain_stmts: Vec<Span> = Vec::new();
@@ -707,6 +710,11 @@ pub fn analyze_with_stores_bound(
                                     None => (None, None),
                                 };
                                 trusted_packages_raw = trusted;
+                                let (budget, remaining) = match remaining {
+                                    Some(raw) => split_size_budget_config(&raw)?,
+                                    None => (None, None),
+                                };
+                                size_budget = budget;
                                 let (component_options, remaining) = match remaining {
                                     Some(raw) => split_component_options_config(&raw)?,
                                     None => (None, None),
@@ -1150,6 +1158,7 @@ pub fn analyze_with_stores_bound(
         custom_attrs,
         min_lib_version,
         trusted_packages,
+        size_budget,
         npm_imports,
         virtual_host: component_options.virtual_host,
         pure_data_pattern: component_options.pure_data_pattern,
@@ -1370,6 +1379,62 @@ fn split_min_lib_config(raw: &str) -> Result<(Option<String>, Option<String>), S
         return Ok((version, None));
     }
     Ok((version, Some(format!("{{ {} }}", kept.join(", ")))))
+}
+
+fn split_size_budget_config(raw: &str) -> Result<(Option<u64>, Option<String>), String> {
+    let wrapped = format!("({})", raw);
+    let allocator = Allocator::default();
+    let source_type = SourceType::default().with_typescript(true);
+    let ret = Parser::new(&allocator, &wrapped, source_type).parse();
+    if !ret.errors.is_empty() {
+        return Ok((None, Some(raw.to_string())));
+    }
+    let Some(Statement::ExpressionStatement(es)) = ret.program.body.first() else {
+        return Ok((None, Some(raw.to_string())));
+    };
+    let Expression::ObjectExpression(obj) = unparenthesize(&es.expression) else {
+        return Ok((None, Some(raw.to_string())));
+    };
+    let mut budget = None;
+    let mut kept: Vec<String> = Vec::new();
+    for p in &obj.properties {
+        let mut is_budget = false;
+        if let ObjectPropertyKind::ObjectProperty(op) = p {
+            if op.key.static_name().as_deref() == Some("sizeBudget") {
+                is_budget = true;
+                let Expression::StringLiteral(v) = unparenthesize(&op.value) else {
+                    return Err("config.sizeBudget must be a string literal like '1.5MB' or '800KB'".to_string());
+                };
+                budget = Some(parse_size_budget(&v.value)?);
+            }
+        }
+        if !is_budget {
+            let span = p.span();
+            kept.push(wrapped[span.start as usize..span.end as usize].to_string());
+        }
+    }
+    if kept.is_empty() {
+        return Ok((budget, None));
+    }
+    Ok((budget, Some(format!("{{ {} }}", kept.join(", ")))))
+}
+
+fn parse_size_budget(s: &str) -> Result<u64, String> {
+    let t = s.trim();
+    let (num, mult) = if let Some(n) = t.strip_suffix("MB") {
+        (n, 1024.0 * 1024.0)
+    } else if let Some(n) = t.strip_suffix("KB") {
+        (n, 1024.0)
+    } else {
+        return Err(format!("config.sizeBudget '{}' needs a KB or MB suffix, like '1.5MB' or '800KB'", s));
+    };
+    let v: f64 = num
+        .parse()
+        .map_err(|_| format!("config.sizeBudget '{}' — '{}' is not a number", s, num))?;
+    if !v.is_finite() || v <= 0.0 {
+        return Err(format!("config.sizeBudget '{}' must be a positive size", s));
+    }
+    Ok((v * mult) as u64)
 }
 
 fn split_custom_tags_config(raw: &str) -> Result<(Option<String>, Option<String>), String> {

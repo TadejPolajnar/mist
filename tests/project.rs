@@ -1397,3 +1397,57 @@ fn style_tag_rejects_unknown_attrs_and_missing_space() {
     let err = mistc::compile(&format!("{}<styleglobal>\n.x {{ color: red; }}\n</style>\n", base)).unwrap_err();
     assert!(err.contains("malformed <style> tag"), "err: {}", err);
 }
+
+#[test]
+fn size_budget_parses_from_app_and_rejects_elsewhere() {
+    let dir = std::env::temp_dir().join("mist-size-budget");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nexport const config = { sizeBudget: '1.5MB' }\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let p = mistc::compile_project_dir(&dir).expect("compile failed");
+    assert_eq!(p.size_budget, Some((1.5 * 1024.0 * 1024.0) as u64));
+    assert!(!p.app.as_ref().unwrap().json.contains("sizeBudget"), "json: {}", p.app.as_ref().unwrap().json);
+
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nexport const config = { sizeBudget: '1MB' }\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("sizeBudget is app-level"), "err: {}", err);
+}
+
+#[test]
+fn size_budget_rejects_bad_literals() {
+    let dir = std::env::temp_dir().join("mist-size-budget-bad");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    for (bad, expect) in [
+        ("sizeBudget: 2", "string literal"),
+        ("sizeBudget: '2'", "KB or MB suffix"),
+        ("sizeBudget: '-1MB'", "positive"),
+        ("sizeBudget: 'xMB'", "not a number"),
+    ] {
+        std::fs::write(
+            dir.join("app.mist"),
+            format!("---\nimport {{ onLaunch }} from 'mist'\nexport const config = {{ {} }}\nonLaunch(() => {{}})\n---\n", bad),
+        )
+        .unwrap();
+        let err = mistc::compile_project_dir(&dir).unwrap_err();
+        assert!(err.contains(expect), "{}: err: {}", bad, err);
+    }
+}
