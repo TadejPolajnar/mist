@@ -162,7 +162,7 @@ setTimeout(() => {{
   }}, 10);
 }}, 10);
 "#,
-        out.join("pages/board/board.js").display()
+        out.join("pages/board/board.js").display().to_string().replace('\\', "/")
     );
     let node = Command::new("node").arg("-e").arg(&boot).output();
     match node {
@@ -206,7 +206,7 @@ setTimeout(() => {{
   }}, 10);
 }}, 10);
 "#,
-        out.join("pages/card/card.js").display()
+        out.join("pages/card/card.js").display().to_string().replace('\\', "/")
     );
     let card_node = Command::new("node").arg("-e").arg(&card_boot).output();
     match card_node {

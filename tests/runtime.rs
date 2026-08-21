@@ -1,7 +1,7 @@
 use std::process::Command;
 
 fn run_node(script: &str) -> String {
-    let rt_path = concat!(env!("CARGO_MANIFEST_DIR"), "/runtime/mist-rt.js");
+    let rt_path = concat!(env!("CARGO_MANIFEST_DIR"), "/runtime/mist-rt.js").replace('\\', "/");
     let full = format!("const rt = require('{}');\n{}", rt_path, script);
     let out = Command::new("node")
         .arg("-e")

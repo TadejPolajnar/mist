@@ -95,8 +95,8 @@ setTimeout(() => {{
   }}, 30);
 }}, 30);
 "#,
-        feed = out.join("pages/feed/feed.js").display(),
-        lab = out.join("stores/lab.js").display()
+        feed = out.join("pages/feed/feed.js").display().to_string().replace('\\', "/"),
+        lab = out.join("stores/lab.js").display().to_string().replace('\\', "/")
     );
     let node = Command::new("node").arg("-e").arg(&boot).output();
     match node {

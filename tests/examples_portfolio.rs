@@ -170,7 +170,7 @@ setTimeout(() => {{
   }}, 10);
 }}, 10);
 "#,
-        out.join("pages/dashboard/dashboard.js").display()
+        out.join("pages/dashboard/dashboard.js").display().to_string().replace('\\', "/")
     );
     let node = Command::new("node").arg("-e").arg(&boot).output();
     match node {
@@ -212,7 +212,7 @@ setTimeout(() => {{
   }}, 10);
 }}, 10);
 "#,
-        out.join("pages/position/position.js").display()
+        out.join("pages/position/position.js").display().to_string().replace('\\', "/")
     );
     let pos_node = Command::new("node").arg("-e").arg(&pos_boot).output();
     match pos_node {

@@ -237,7 +237,7 @@ setTimeout(() => {{
   console.log('BOOT OK');
 }}, 10);
 "#,
-        out.join("pages/item/item.js").display()
+        out.join("pages/item/item.js").display().to_string().replace('\\', "/")
     );
     let node = Command::new("node").arg("-e").arg(&boot).output();
     match node {
