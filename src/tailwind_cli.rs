@@ -126,8 +126,6 @@ fn ensure_standalone() -> Result<std::path::PathBuf, String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     eprintln!("downloading the Tailwind v4 standalone binary (first run, ~40 MB, needs network)…");
-    // pinned like the npm path — `latest` would silently fetch a future v5
-    // whose output shape the postprocessor doesn't know, and cache it forever
     let url = std::env::var("MISTC_TW_STANDALONE_URL").unwrap_or_else(|_| {
         format!(
             "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/{}",

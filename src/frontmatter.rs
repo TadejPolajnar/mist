@@ -10,9 +10,7 @@ use regex::Regex;
 use crate::template;
 use crate::wxml::Handler;
 
-/// Pattern-keyed regex memo — `Rewriter` patterns repeat across every unit of
-/// a project build, and `Regex::new` dominates otherwise. Clones share the
-/// compiled program.
+/// Pattern-keyed regex memo — `Regex::new` dominates project builds without it.
 pub(crate) fn cached_regex(pattern: &str) -> Result<Regex, String> {
     thread_local! {
         static CACHE: std::cell::RefCell<std::collections::HashMap<String, Regex>> =
@@ -24,8 +22,6 @@ pub(crate) fn cached_regex(pattern: &str) -> Result<Regex, String> {
         }
         let re = Regex::new(pattern).map_err(|e| e.to_string())?;
         let mut map = c.borrow_mut();
-        // long-running hosts (LSP, --watch) see ever-changing state names;
-        // reset rather than grow without bound
         if map.len() >= 4096 {
             map.clear();
         }
@@ -51,8 +47,7 @@ pub struct Analysis {
     pub inline: Option<bool>,
     pub plain_stmts: Vec<String>,
     pub plain_consts: Vec<String>,
-    /// module-scope `let`/`var` names — methods and deriveds reading these are
-    /// impure for deps purposes (the binding can change without a tracked write)
+    /// module-scope `let`/`var` names — reads of these are impure for deps
     pub plain_lets: Vec<String>,
     pub imports: Vec<MistImport>,
     pub store_imports: Vec<StoreImport>,
@@ -2580,9 +2575,7 @@ pub fn store_module_info(src: &str) -> Result<StoreModuleInfo, String> {
     compile_store_module(src, "./mist-rt.js").map(|(_, info)| info)
 }
 
-/// Parse-only `.mist` component-import lister for the inlining pre-pass —
-/// skips all analysis; unresolved or malformed imports surface later in the
-/// full analyze with proper diagnostics.
+/// Parse-only `.mist` import lister for the inlining pre-pass.
 pub fn mist_import_list(src: &str) -> Vec<MistImport> {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, src, SourceType::default().with_typescript(true)).parse();

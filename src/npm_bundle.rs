@@ -41,7 +41,6 @@ fn esbuild_cache_dir() -> PathBuf {
     }
 }
 
-/// Windows has no HOME; npm/npx are .cmd shims CreateProcess cannot exec directly.
 pub(crate) fn home_dir() -> Option<std::ffi::OsString> {
     std::env::var_os("HOME")
         .filter(|h| !h.is_empty())
@@ -61,8 +60,6 @@ pub(crate) fn tool_command(tool: &str) -> Command {
 fn ensure_esbuild() -> Result<PathBuf, String> {
     let dir = esbuild_cache_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    // unix: bin/esbuild IS the native binary (postinstall swaps the JS shim);
-    // windows: the shim stays JS and the real exe lives in the platform package
     let bin = if cfg!(windows) {
         let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" };
         dir.join("node_modules")

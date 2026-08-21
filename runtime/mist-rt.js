@@ -25,16 +25,6 @@ function set(page, path, value) {
   page.__pending[path] = value;
 }
 
-function readPath(obj, path) {
-  const segs = parsePath(path);
-  let cur = obj;
-  for (let i = 0; i < segs.length; i++) {
-    if (cur == null) return undefined;
-    cur = cur[segs[i]];
-  }
-  return cur;
-}
-
 let budget = 900 * 1024;
 
 function setDataBudget(bytes) {
@@ -100,8 +90,7 @@ function flush(page) {
   if (!pending) return;
   const undoPaths = [];
   for (const path in pending) {
-    undoPaths.push([path, readPath(page.data, path)]);
-    applyPath(page.data, path, pending[path]);
+    undoPaths.push([path, applyPathCapture(page.data, path, pending[path])]);
   }
   page.__undo = [];
   Object.assign(pending, page.__derive());
@@ -147,8 +136,12 @@ function init(page) {
   if (Object.keys(seed).length) send(page, seed);
 }
 
+const pathSegs = new Map();
+
 // `todos[3].done` → ['todos', 3, 'done']
 function parsePath(path) {
+  const hit = pathSegs.get(path);
+  if (hit) return hit;
   const segs = [];
   let cur = '';
   for (let i = 0; i < path.length; i++) {
@@ -171,6 +164,8 @@ function parsePath(path) {
     }
   }
   if (cur) segs.push(cur);
+  if (pathSegs.size >= 4096) pathSegs.clear();
+  pathSegs.set(path, segs);
   return segs;
 }
 
@@ -192,6 +187,20 @@ function unapplyPath(obj, path, value) {
   } else {
     cur[last] = value;
   }
+}
+
+function applyPathCapture(obj, path, value) {
+  const segs = parsePath(path);
+  let cur = obj;
+  for (let i = 0; i < segs.length - 1; i++) {
+    const s = segs[i];
+    if (cur[s] == null) cur[s] = typeof segs[i + 1] === 'number' ? [] : {};
+    cur = cur[s];
+  }
+  const last = segs[segs.length - 1];
+  const prior = cur[last];
+  cur[last] = value;
+  return prior;
 }
 
 // walk/create and assign on the local data mirror

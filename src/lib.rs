@@ -13,11 +13,7 @@ use std::path::{Path, PathBuf};
 
 pub const RUNTIME: &str = include_str!("../runtime/mist-rt.js");
 
-/// The shipped runtime: `runtime/mist-rt.js` with full-line comments, blank
-/// lines and indentation stripped (~25% smaller). Names and statement order
-/// survive, so device stack traces stay readable; the commented source is the
-/// repo file. The runtime deliberately avoids multi-line template literals —
-/// line-level stripping would corrupt them.
+/// `runtime/mist-rt.js` with comments/blank lines/indent stripped (~25% smaller).
 pub fn runtime_js() -> &'static str {
     static STRIPPED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     STRIPPED.get_or_init(|| {
@@ -1325,10 +1321,9 @@ struct ProjectCtx {
     min_lib: Option<String>,
     /// app.mist's `config.sizeBudget` in bytes — opt-in M1029 threshold
     size_budget: Option<u64>,
-    /// canonical store path → parsed module info; store modules are imported by
-    /// many units but only ever analyzed once
+    /// canonical store path → module info, analyzed once per project
     store_info_memo: std::cell::RefCell<std::collections::HashMap<PathBuf, Option<frontmatter::StoreModuleInfo>>>,
-    /// canonical component path → is_inlinable verdict, shared across importers
+    /// canonical component path → is_inlinable verdict
     inlinable_memo: std::cell::RefCell<std::collections::HashMap<PathBuf, bool>>,
     seen: Vec<PathBuf>,
     files: Vec<CompiledFile>,

@@ -434,8 +434,6 @@ fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bo
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent).expect("cannot create output dir");
         }
-        // unchanged files stay untouched — watch rebuilds fire fewer DevTools
-        // file events, so the simulator reloads less
         if fs::read(&p).ok().as_deref() != Some(content.as_bytes()) {
             fs::write(p, content).unwrap();
         }
@@ -559,10 +557,7 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
-/// Build-end package-size summary + M1029 warnings against WeChat's upload
-/// limits (2MB main, 2MB per subpackage, 20MB total) and the opt-in
-/// `config.sizeBudget`. Byte counts are of the emitted files — WeChat measures
-/// the uploaded package, so treat the numbers as close, not exact.
+/// Build-end size summary + M1029 against WeChat's limits and `config.sizeBudget`.
 fn report_package_sizes(outdir: &Path, written: &[String], budget: Option<u64>) {
     let mut main: u64 = 0;
     let mut subs: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
