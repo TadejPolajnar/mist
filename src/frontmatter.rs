@@ -51,6 +51,9 @@ pub struct Analysis {
     pub inline: Option<bool>,
     pub plain_stmts: Vec<String>,
     pub plain_consts: Vec<String>,
+    /// module-scope `let`/`var` names — methods and deriveds reading these are
+    /// impure for deps purposes (the binding can change without a tracked write)
+    pub plain_lets: Vec<String>,
     pub imports: Vec<MistImport>,
     pub store_imports: Vec<StoreImport>,
     pub data_props: Vec<PropDecl>,
@@ -554,6 +557,7 @@ pub fn analyze_with_stores_bound(
     let mut component_options_raw: Option<String> = None;
     let mut plain_stmts: Vec<Span> = Vec::new();
     let mut plain_consts: Vec<String> = Vec::new();
+    let mut plain_lets: Vec<String> = Vec::new();
     let mut imports: Vec<MistImport> = Vec::new();
     let mut data_props: Vec<PropDecl> = Vec::new();
     let mut callback_props: Vec<String> = Vec::new();
@@ -817,6 +821,9 @@ pub fn analyze_with_stores_bound(
                     for decl in &var.declarations {
                         if let BindingPatternKind::BindingIdentifier(id) = &decl.id.kind {
                             plain_consts.push(id.name.to_string());
+                            if !matches!(var.kind, VariableDeclarationKind::Const) {
+                                plain_lets.push(id.name.to_string());
+                            }
                         }
                     }
                     plain_stmts.push(var.span);
@@ -1171,6 +1178,7 @@ pub fn analyze_with_stores_bound(
         inline: inline_flag,
         plain_stmts,
         plain_consts,
+        plain_lets,
         imports,
         store_imports,
         data_props,
@@ -1850,10 +1858,22 @@ fn store_deps(code: &str) -> Option<std::collections::BTreeSet<String>> {
     Some(deps)
 }
 
+fn references_any(body: &str, names: &[String]) -> bool {
+    names.iter().any(|n| {
+        cached_regex(&format!(r"\b{}\b", regex::escape(n)))
+            .map(|re| re.is_match(body))
+            .unwrap_or(false)
+    })
+}
+
 fn derived_deps(
     arrow: &str,
     pure_methods: &[(String, std::collections::BTreeSet<String>)],
+    mutable_names: &[String],
 ) -> Option<Vec<String>> {
+    if references_any(arrow, mutable_names) {
+        return None;
+    }
     let ident = |s: &str| -> String {
         s.chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$').collect()
     };
@@ -2020,6 +2040,7 @@ pub fn emit_js_route(
         .methods
         .iter()
         .filter(|m| !m.body.contains("this."))
+        .filter(|m| !references_any(&m.body, &analysis.plain_lets))
         .filter_map(|m| store_deps(&m.body).map(|d| (m.name.clone(), d)))
         .collect();
     body.push_str(&format!("{}__derive() {{\n{}  const __o = {{}};\n", pad, pad));
@@ -2029,7 +2050,7 @@ pub fn emit_js_route(
             Some(k) => format!("'{}'", k),
             None => "null".to_string(),
         };
-        let deps = match derived_deps(&d.arrow, &pure_methods) {
+        let deps = match derived_deps(&d.arrow, &pure_methods, &analysis.plain_lets) {
             Some(names) => format!(
                 "[{}]",
                 names.iter().map(|n| format!("'{}'", n)).collect::<Vec<_>>().join(", ")

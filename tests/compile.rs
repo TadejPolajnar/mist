@@ -1390,3 +1390,18 @@ fn nested_loop_lift_uses_declared_outer_index() {
     assert!(out.wxml.contains("wx:for=\"{{_hl0[gi]}}\""), "wxml:\n{}", out.wxml);
     assert!(out.js.contains(".map((g, gi) => (g.items).map(it =>"), "js:\n{}", out.js);
 }
+
+#[test]
+fn module_let_reads_make_methods_and_deriveds_impure() {
+    let src = "---\nimport { state, derived } from 'mist'\nconst n = state(1)\nlet tick = 0\nfunction stamp(v) { return v + tick }\nconst a = derived(() => stamp(n.value))\nconst b = derived(() => n.value + tick)\nfunction bump() { tick++; n.value++ }\n---\n<span>{a.value} {b.value}</span><button onTap={bump}>x</button>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(out.js.contains("'a', null, () => this.stamp(this._n), null)"), "js:\n{}", out.js);
+    assert!(out.js.contains("'b', null, () => this._n + tick, null)"), "js:\n{}", out.js);
+}
+
+#[test]
+fn module_const_reads_stay_pure() {
+    let src = "---\nimport { state, derived } from 'mist'\nconst n = state(1)\nconst factor = 3\nfunction scale(v) { return v * factor }\nconst a = derived(() => scale(n.value))\n---\n<span>{a.value}</span>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(out.js.contains("'a', null, () => this.scale(this._n), ['n'])"), "js:\n{}", out.js);
+}
