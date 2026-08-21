@@ -32,7 +32,7 @@ cargo install --path . && cargo install --path crates/mistc-lsp
 ```
 
 编辑器支持：在 VS Code 商店安装 **[Mist for WeChat Mini Programs](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)**
-（`tadejpolajnar.mist-lang`）——`.mist` 语法高亮加上 LSP 诊断、补全、悬停、
+（`tadejpolajnar.mist-lang`）——`.mist` 语法高亮加上 LSP 诊断（错误与警告）、快速修复、补全、悬停、
 跳转定义、签名帮助和重命名，由 `npm install -g mist-lang` 装好的
 `mistc-lsp` 提供。
 

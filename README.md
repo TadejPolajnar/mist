@@ -241,7 +241,8 @@ Working end-to-end and validated in WeChat DevTools: pages, components, slots, i
    pages when a store or component file changes), completions (frontmatter symbols +
    template tags/attributes/events/component props), hover, go-to-definition,
    signature help, incremental sync, rename (including cross-file store
-   rename) and the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang) (`tadejpolajnar.mist-lang`, Marketplace) all ship
+   rename), warning diagnostics and quick fixes (`.value`, event/attr rename,
+   `customAttrs` suppression, `minLibVersion` bump, `raw()` wrapping) and the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang) (`tadejpolajnar.mist-lang`, Marketplace) all ship
 
 ## License
 

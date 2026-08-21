@@ -221,7 +221,7 @@ src/
 ## 路线图
 
 1. 真机基准数据（需要已注册的 AppID）
-2. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）以及 [VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)（`tadejpolajnar.mist-lang`，商店已上架）均已可用
+2. `mistc-lsp`——诊断（含 store 或组件文件变更时对导入页面的工作区级重新检查）、补全（frontmatter 符号 + 模板标签/属性/事件/组件 props）、悬停、跳转定义、签名帮助、增量同步、重命名（含跨文件 store 重命名）、警告诊断与快速修复（`.value`、事件/属性改名、`customAttrs` 抑制、`minLibVersion` 提升、`raw()` 包裹）以及 [VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)（`tadejpolajnar.mist-lang`，商店已上架）均已可用
 
 ## 许可证
 

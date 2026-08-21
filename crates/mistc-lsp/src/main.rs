@@ -92,9 +92,185 @@ fn diagnostics_for(uri: &Url, src: &str) -> Vec<Diagnostic> {
         };
     }
     match mistc::compile_unit_with_stores(src, is_page(uri), &resolver) {
-        Ok(unit) => missing_component_diagnostics(src, dir.as_deref(), &unit),
+        Ok(unit) => {
+            let mut out = missing_component_diagnostics(src, dir.as_deref(), &unit);
+            out.extend(warning_diagnostics(src, &unit.warnings));
+            out
+        }
         Err(e) => error_to_diagnostics(src, &e),
     }
+}
+
+fn warning_diagnostics(src: &str, warnings: &[String]) -> Vec<Diagnostic> {
+    let code_re = Regex::new(r"^(M\d{4}):").unwrap();
+    let token_re = Regex::new(r"`([^`\n]+)`|'([^'\n]+)'|<([a-z][a-z0-9-]*)>").unwrap();
+    warnings
+        .iter()
+        .map(|w| {
+            let code = code_re.captures(w).map(|c| c[1].to_string());
+            let range = token_re
+                .captures(w)
+                .and_then(|c| c.get(1).or_else(|| c.get(2)).or_else(|| c.get(3)))
+                .and_then(|m| {
+                    let needle = m.as_str();
+                    src.find(needle).map(|i| Range {
+                        start: pos_of_byte(src, i),
+                        end: pos_of_byte(src, i + needle.len()),
+                    })
+                })
+                .unwrap_or_default();
+            Diagnostic {
+                range,
+                severity: Some(DiagnosticSeverity::WARNING),
+                code: code.map(NumberOrString::String),
+                source: Some("mistc".into()),
+                message: w.clone(),
+                ..Default::default()
+            }
+        })
+        .collect()
+}
+
+fn config_insert_edit(src: &str, entry: &str) -> TextEdit {
+    if let Some(i) = src.find("export const config = {") {
+        let at = i + "export const config = {".len();
+        return TextEdit {
+            range: Range { start: pos_of_byte(src, at), end: pos_of_byte(src, at) },
+            new_text: format!(" {},", entry),
+        };
+    }
+    let at = src.find("---\n").map(|i| i + 4).unwrap_or(0);
+    TextEdit {
+        range: Range { start: pos_of_byte(src, at), end: pos_of_byte(src, at) },
+        new_text: format!("export const config = {{ {} }}\n", entry),
+    }
+}
+
+fn quick_fix(title: &str, uri: &Url, diag: &Diagnostic, edits: Vec<TextEdit>) -> CodeActionOrCommand {
+    let mut changes = std::collections::HashMap::new();
+    changes.insert(uri.clone(), edits);
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diag.clone()]),
+        edit: Some(WorkspaceEdit { changes: Some(changes), ..Default::default() }),
+        ..Default::default()
+    })
+}
+
+fn quick_fixes(src: &str, uri: &Url, diag: &Diagnostic) -> Vec<CodeActionOrCommand> {
+    let code = match &diag.code {
+        Some(NumberOrString::String(c)) => c.as_str(),
+        _ => return Vec::new(),
+    };
+    let msg = &diag.message;
+    let mut out = Vec::new();
+    match code {
+        "M1007" => {
+            let Some(name) = Regex::new(r"`([^`]+)` is reactive").unwrap().captures(msg).map(|c| c[1].to_string()) else {
+                return out;
+            };
+            let byte = position_to_byte(src, diag.range.start);
+            if src[byte..].starts_with(&name) {
+                let range = Range {
+                    start: pos_of_byte(src, byte),
+                    end: pos_of_byte(src, byte + name.len()),
+                };
+                out.push(quick_fix(
+                    &format!("Change to `{}.value`", name),
+                    uri,
+                    diag,
+                    vec![TextEdit { range, new_text: format!("{}.value", name) }],
+                ));
+            }
+        }
+        "M1023" | "M1024" => {
+            let name = Regex::new(r"add '([^']+)' to config\.customAttrs")
+                .unwrap()
+                .captures(msg)
+                .map(|c| c[1].to_string());
+            let Some(name) = name else { return out };
+            if let Some(sug) = Regex::new(r"did you mean ([A-Za-z0-9:_-]+)\?")
+                .unwrap()
+                .captures(msg)
+                .map(|c| c[1].to_string())
+            {
+                if let Some(i) = src.find(&name) {
+                    let range = Range {
+                        start: pos_of_byte(src, i),
+                        end: pos_of_byte(src, i + name.len()),
+                    };
+                    out.push(quick_fix(
+                        &format!("Rename to `{}`", sug),
+                        uri,
+                        diag,
+                        vec![TextEdit { range, new_text: sug }],
+                    ));
+                }
+            }
+            let edit = if let Some(i) = src.find("customAttrs: [") {
+                let at = i + "customAttrs: [".len();
+                TextEdit {
+                    range: Range { start: pos_of_byte(src, at), end: pos_of_byte(src, at) },
+                    new_text: format!("'{}', ", name),
+                }
+            } else {
+                config_insert_edit(src, &format!("customAttrs: ['{}']", name))
+            };
+            out.push(quick_fix(
+                &format!("Add '{}' to config.customAttrs", name),
+                uri,
+                diag,
+                vec![edit],
+            ));
+        }
+        "M1027" => {
+            let Some(since) = Regex::new(r"≥ ([0-9.]+)").unwrap().captures(msg).map(|c| c[1].to_string()) else {
+                return out;
+            };
+            let edit = if let Some(i) = src.find("minLibVersion: '") {
+                let at = i + "minLibVersion: '".len();
+                let end = src[at..].find('\'').map(|j| at + j).unwrap_or(at);
+                TextEdit {
+                    range: Range { start: pos_of_byte(src, at), end: pos_of_byte(src, end) },
+                    new_text: since.clone(),
+                }
+            } else {
+                config_insert_edit(src, &format!("minLibVersion: '{}'", since))
+            };
+            out.push(quick_fix(&format!("Set minLibVersion to '{}'", since), uri, diag, vec![edit]));
+        }
+        "M1026" => {
+            let Some(name) = Regex::new(r"reactive value '([^']+)'").unwrap().captures(msg).map(|c| c[1].to_string()) else {
+                return out;
+            };
+            let byte = position_to_byte(src, diag.range.start);
+            let needle = format!("{}.value", name);
+            let found = src[byte..].find(&needle).map(|i| byte + i).or_else(|| src.find(&needle));
+            let Some(i) = found else { return out };
+            if src[..i].trim_end().ends_with("raw(") {
+                return out;
+            }
+            let mut edits = vec![TextEdit {
+                range: Range { start: pos_of_byte(src, i), end: pos_of_byte(src, i + needle.len()) },
+                new_text: format!("raw({})", needle),
+            }];
+            let import_re = Regex::new(r"import\s*\{([^}]*)\}\s*from\s*'mist'").unwrap();
+            if let Some(c) = import_re.captures(src) {
+                let inner = c.get(1).unwrap();
+                if !inner.as_str().split(',').any(|s| s.trim() == "raw") {
+                    let at = inner.start();
+                    edits.push(TextEdit {
+                        range: Range { start: pos_of_byte(src, at), end: pos_of_byte(src, at) },
+                        new_text: " raw,".to_string(),
+                    });
+                }
+            }
+            out.push(quick_fix("Wrap in raw() — conservative re-sync after the call", uri, diag, edits));
+        }
+        _ => {}
+    }
+    out
 }
 
 fn missing_component_diagnostics(
@@ -959,6 +1135,7 @@ impl LanguageServer for Backend {
                     ..Default::default()
                 }),
                 rename_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -974,6 +1151,24 @@ impl LanguageServer for Backend {
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri;
+        let src = match self.docs.read().await.get(&uri) {
+            Some(s) => s.clone(),
+            None => return Ok(None),
+        };
+        let actions: Vec<CodeActionOrCommand> = params
+            .context
+            .diagnostics
+            .iter()
+            .flat_map(|d| quick_fixes(&src, &uri, d))
+            .collect();
+        if actions.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(actions))
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -1193,6 +1388,83 @@ mod tests {
         assert_eq!(ds[1].code, Some(NumberOrString::String("M1001".into())));
         assert_eq!(ds[1].range.start, Position { line: 2, character: 1 });
         assert!(ds[1].message.contains("help: fix2"));
+    }
+
+    fn edits_of(a: &CodeActionOrCommand, uri: &Url) -> Vec<TextEdit> {
+        let CodeActionOrCommand::CodeAction(a) = a else { panic!("not an action") };
+        a.edit.as_ref().unwrap().changes.as_ref().unwrap().get(uri).unwrap().clone()
+    }
+
+    fn apply(src: &str, mut edits: Vec<TextEdit>) -> String {
+        edits.sort_by_key(|e| std::cmp::Reverse(position_to_byte(src, e.range.start)));
+        let mut out = src.to_string();
+        for e in edits {
+            let s = position_to_byte(src, e.range.start);
+            let t = position_to_byte(src, e.range.end);
+            out.replace_range(s..t, &e.new_text);
+        }
+        out
+    }
+
+    #[test]
+    fn unit_warnings_surface_as_warning_diagnostics() {
+        let uri = Url::parse("file:///tmp/pages/x.mist").unwrap();
+        let src = "---\nimport { state } from 'mist'\nconst items = state([1])\n---\n<div>{items.value.map(t => (<span>{t}</span>))}</div>\n";
+        let ds = diagnostics_for(&uri, src);
+        let w = ds.iter().find(|d| d.code == Some(NumberOrString::String("M1008".into()))).expect("M1008 missing");
+        assert_eq!(w.severity, Some(DiagnosticSeverity::WARNING));
+        assert!(w.range != Range::default(), "range: {:?}", w.range);
+    }
+
+    #[test]
+    fn m1007_quick_fix_appends_value() {
+        let uri = Url::parse("file:///tmp/pages/x.mist").unwrap();
+        let src = "---\nimport { state } from 'mist'\nconst count = state(0)\nfunction f() { return count + 1 }\n---\n<span onTap={f}>{count.value}</span>\n";
+        let ds = diagnostics_for(&uri, src);
+        let d = ds.iter().find(|d| d.code == Some(NumberOrString::String("M1007".into()))).expect("M1007 missing");
+        let fixes = quick_fixes(src, &uri, d);
+        assert_eq!(fixes.len(), 1);
+        let fixed = apply(src, edits_of(&fixes[0], &uri));
+        assert!(fixed.contains("return count.value + 1"), "fixed:\n{}", fixed);
+    }
+
+    #[test]
+    fn m1023_quick_fixes_rename_and_suppress() {
+        let uri = Url::parse("file:///tmp/pages/x.mist").unwrap();
+        let src = "---\nimport { state } from 'mist'\nexport const config = { navigationBarTitleText: 't' }\nconst n = state(0)\nfunction f() { n.value++ }\n---\n<scroll-view scroll-y onScrolls={f}>{n.value}</scroll-view>\n";
+        let ds = diagnostics_for(&uri, src);
+        let d = ds.iter().find(|d| d.code == Some(NumberOrString::String("M1023".into()))).expect("M1023 missing");
+        let fixes = quick_fixes(src, &uri, d);
+        assert_eq!(fixes.len(), 2, "{:?}", fixes.iter().map(|f| match f { CodeActionOrCommand::CodeAction(a) => a.title.clone(), _ => String::new() }).collect::<Vec<_>>());
+        let renamed = apply(src, edits_of(&fixes[0], &uri));
+        assert!(renamed.contains("onScroll={f}"), "renamed:\n{}", renamed);
+        let suppressed = apply(src, edits_of(&fixes[1], &uri));
+        assert!(suppressed.contains("export const config = { customAttrs: ['onScrolls'], navigationBarTitleText: 't' }"), "suppressed:\n{}", suppressed);
+    }
+
+    #[test]
+    fn m1027_quick_fix_sets_min_lib_version() {
+        let uri = Url::parse("file:///tmp/pages/x.mist").unwrap();
+        let src = "---\nimport { state } from 'mist'\nexport const config = { minLibVersion: '2.0.0' }\nconst n = state(0)\n---\n<scroll-view refresher-enabled>{n.value}</scroll-view>\n";
+        let ds = diagnostics_for(&uri, src);
+        let d = ds.iter().find(|d| d.code == Some(NumberOrString::String("M1027".into()))).expect("M1027 missing");
+        let fixes = quick_fixes(src, &uri, d);
+        assert_eq!(fixes.len(), 1);
+        let fixed = apply(src, edits_of(&fixes[0], &uri));
+        assert!(fixed.contains("minLibVersion: '2.10.1'"), "fixed:\n{}", fixed);
+    }
+
+    #[test]
+    fn m1026_quick_fix_wraps_raw_and_extends_import() {
+        let uri = Url::parse("file:///tmp/pages/x.mist").unwrap();
+        let src = "---\nimport { state } from 'mist'\nimport dayjs from 'dayjs'\nconst when = state({ ts: 0 })\nfunction f() { return dayjs(when.value) }\n---\n<span>{f()}</span>\n";
+        let ds = diagnostics_for(&uri, src);
+        let d = ds.iter().find(|d| d.code == Some(NumberOrString::String("M1026".into()))).expect("M1026 missing");
+        let fixes = quick_fixes(src, &uri, d);
+        assert_eq!(fixes.len(), 1);
+        let fixed = apply(src, edits_of(&fixes[0], &uri));
+        assert!(fixed.contains("dayjs(raw(when.value))"), "fixed:\n{}", fixed);
+        assert!(fixed.contains("import { raw, state } from 'mist'"), "fixed:\n{}", fixed);
     }
 
     #[test]

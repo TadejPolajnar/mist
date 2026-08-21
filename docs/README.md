@@ -44,7 +44,8 @@ mistc test                     # run tests/*.test.js in a Node harness
 
 Editor support: install **[Mist for WeChat Mini Programs](https://marketplace.visualstudio.com/items?itemName=tadejpolajnar.mist-lang)**
 from the VS Code Marketplace (`tadejpolajnar.mist-lang`) — `.mist` syntax
-highlighting plus LSP diagnostics, completions, hover, go-to-definition,
+highlighting plus LSP diagnostics (errors and warnings), quick fixes,
+completions, hover, go-to-definition,
 signature help and rename, powered by the `mistc-lsp` binary that
 `npm install -g mist-lang` puts on your PATH.
 
