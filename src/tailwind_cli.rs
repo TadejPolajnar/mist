@@ -70,11 +70,9 @@ fn write_cached(dir: &std::path::Path, result: &CliCss) {
 /// Persistent npm dir so `npm install` runs once, not per build. Lives under
 /// ~/.cache (macOS purges $TMPDIR periodically); temp dir is the fallback.
 fn v4_cache_dir() -> std::path::PathBuf {
-    match std::env::var_os("HOME") {
-        Some(home) if !home.is_empty() => {
-            std::path::PathBuf::from(home).join(".cache").join("mistc").join("tw4")
-        }
-        _ => std::env::temp_dir().join("mistc-tw4"),
+    match crate::npm_bundle::home_dir() {
+        Some(home) => std::path::PathBuf::from(home).join(".cache").join("mistc").join("tw4"),
+        None => std::env::temp_dir().join("mistc-tw4"),
     }
 }
 
@@ -82,11 +80,9 @@ fn v4_cache_dir() -> std::path::PathBuf {
 /// content detection scans the cwd, and cached selectors would leak back in as
 /// phantom class usage.
 fn css_memo_dir() -> std::path::PathBuf {
-    match std::env::var_os("HOME") {
-        Some(home) if !home.is_empty() => {
-            std::path::PathBuf::from(home).join(".cache").join("mistc").join("css")
-        }
-        _ => std::env::temp_dir().join("mistc-css"),
+    match crate::npm_bundle::home_dir() {
+        Some(home) => std::path::PathBuf::from(home).join(".cache").join("mistc").join("css"),
+        None => std::env::temp_dir().join("mistc-css"),
     }
 }
 
@@ -122,7 +118,7 @@ fn run_cli_v4(classes: &[String], theme: Option<&str>) -> Result<String, String>
         fs::write(dir.join("package.json"), "{ \"name\": \"mistc-tw\", \"private\": true }")
             .map_err(|e| e.to_string())?;
         // pinned to v4 — the postprocessor is written against v4 output shape
-        let out = Command::new("npm")
+        let out = crate::npm_bundle::tool_command("npm")
             .args(["install", "--no-audit", "--no-fund", "tailwindcss@^4", "@tailwindcss/cli@^4"])
             .current_dir(&dir)
             .output()
@@ -161,7 +157,7 @@ fn run_cli_v4(classes: &[String], theme: Option<&str>) -> Result<String, String>
             c
         }
         None => {
-            let mut c = Command::new("npx");
+            let mut c = crate::npm_bundle::tool_command("npx");
             c.arg("@tailwindcss/cli");
             c
         }

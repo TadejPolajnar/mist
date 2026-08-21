@@ -382,7 +382,11 @@ fn run_tests(dir: &Path, filter: Option<&str>, timeout_secs: u64) -> Result<bool
                 return Err(e);
             }
         };
-        let name = test.strip_prefix(dir).unwrap_or(test).display();
+        let name = test
+            .strip_prefix(dir)
+            .unwrap_or(test)
+            .to_string_lossy()
+            .replace('\\', "/");
         if ok {
             println!("PASS {}", name);
             if !stdout.trim().is_empty() {

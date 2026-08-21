@@ -35,23 +35,48 @@ pub fn valid_package_name(pkg: &str) -> bool {
 }
 
 fn esbuild_cache_dir() -> PathBuf {
-    match std::env::var_os("HOME") {
-        Some(home) if !home.is_empty() => {
-            PathBuf::from(home).join(".cache").join("mistc").join("esbuild")
-        }
-        _ => std::env::temp_dir().join("mistc-esbuild"),
+    match home_dir() {
+        Some(home) => PathBuf::from(home).join(".cache").join("mistc").join("esbuild"),
+        None => std::env::temp_dir().join("mistc-esbuild"),
+    }
+}
+
+/// Windows has no HOME; npm/npx are .cmd shims CreateProcess cannot exec directly.
+pub(crate) fn home_dir() -> Option<std::ffi::OsString> {
+    std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .or_else(|| std::env::var_os("USERPROFILE").filter(|h| !h.is_empty()))
+}
+
+pub(crate) fn tool_command(tool: &str) -> Command {
+    if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.args(["/C", tool]);
+        c
+    } else {
+        Command::new(tool)
     }
 }
 
 fn ensure_esbuild() -> Result<PathBuf, String> {
     let dir = esbuild_cache_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let bin = dir.join("node_modules").join(".bin").join("esbuild");
+    // unix: bin/esbuild IS the native binary (postinstall swaps the JS shim);
+    // windows: the shim stays JS and the real exe lives in the platform package
+    let bin = if cfg!(windows) {
+        let arch = if std::env::consts::ARCH == "aarch64" { "arm64" } else { "x64" };
+        dir.join("node_modules")
+            .join("@esbuild")
+            .join(format!("win32-{}", arch))
+            .join("esbuild.exe")
+    } else {
+        dir.join("node_modules").join(".bin").join("esbuild")
+    };
     if !bin.exists() {
         eprintln!("installing esbuild (first npm-import build, needs network)…");
         fs::write(dir.join("package.json"), "{ \"name\": \"mistc-esbuild\", \"private\": true }")
             .map_err(|e| e.to_string())?;
-        let out = Command::new("npm")
+        let out = tool_command("npm")
             .args(["install", "--no-audit", "--no-fund", "esbuild@^0.24"])
             .current_dir(&dir)
             .output()
