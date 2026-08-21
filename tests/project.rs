@@ -1130,7 +1130,12 @@ fn npm_vendor_require_path_is_depth_aware_for_subpackages() {
         "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
     )
     .unwrap();
-    if std::process::Command::new("npm").arg("--version").output().is_err() {
+    let npm_ok = if cfg!(windows) {
+        std::process::Command::new("cmd").args(["/C", "npm", "--version"]).output().is_ok_and(|o| o.status.success())
+    } else {
+        std::process::Command::new("npm").arg("--version").output().is_ok()
+    };
+    if !npm_ok {
         eprintln!("skipping: npm not available");
         return;
     }
@@ -1209,7 +1214,12 @@ fn page_min_lib_version_overrides_app_floor() {
 
 #[test]
 fn m1028_flags_dom_packages_and_trusted_packages_suppresses() {
-    if std::process::Command::new("npm").arg("--version").output().is_err() {
+    let npm_ok = if cfg!(windows) {
+        std::process::Command::new("cmd").args(["/C", "npm", "--version"]).output().is_ok_and(|o| o.status.success())
+    } else {
+        std::process::Command::new("npm").arg("--version").output().is_ok()
+    };
+    if !npm_ok {
         eprintln!("skipping: npm not available");
         return;
     }

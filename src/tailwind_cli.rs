@@ -126,19 +126,26 @@ fn ensure_standalone() -> Result<std::path::PathBuf, String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     eprintln!("downloading the Tailwind v4 standalone binary (first run, ~40 MB, needs network)…");
+    // pinned like the npm path — `latest` would silently fetch a future v5
+    // whose output shape the postprocessor doesn't know, and cache it forever
     let url = std::env::var("MISTC_TW_STANDALONE_URL").unwrap_or_else(|_| {
         format!(
-            "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/{}",
+            "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/{}",
             asset
         )
     });
-    let tmp = bin.with_extension("download");
+    let tmp = bin.with_extension(format!("download-{}", std::process::id()));
     let out = Command::new("curl")
         .args(["-fsSL", "--retry", "2", "-o"])
         .arg(&tmp)
         .arg(&url)
         .output()
-        .map_err(|e| format!("curl not available: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "cannot download Tailwind: curl is not available ({}) — install curl, or install Node.js + npm and rebuild",
+                e
+            )
+        })?;
     if !out.status.success() {
         let _ = fs::remove_file(&tmp);
         return Err(format!(

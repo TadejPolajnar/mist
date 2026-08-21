@@ -1405,3 +1405,10 @@ fn module_const_reads_stay_pure() {
     let out = mistc::compile(src).expect("compile failed");
     assert!(out.js.contains("'a', null, () => this.scale(this._n), ['n'])"), "js:\n{}", out.js);
 }
+
+#[test]
+fn destructured_module_lets_are_impure_too() {
+    let src = "---\nimport { state, derived } from 'mist'\nconst n = state(1)\nlet { rate, base } = { rate: 2, base: 10 }\nfunction calc(v) { return v * rate + base }\nconst a = derived(() => calc(n.value))\nfunction bump() { rate++; n.value++ }\n---\n<span>{a.value}</span><button onTap={bump}>x</button>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(out.js.contains("'a', null, () => this.calc(this._n), null)"), "js:\n{}", out.js);
+}

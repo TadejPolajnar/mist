@@ -821,9 +821,9 @@ pub fn analyze_with_stores_bound(
                     for decl in &var.declarations {
                         if let BindingPatternKind::BindingIdentifier(id) = &decl.id.kind {
                             plain_consts.push(id.name.to_string());
-                            if !matches!(var.kind, VariableDeclarationKind::Const) {
-                                plain_lets.push(id.name.to_string());
-                            }
+                        }
+                        if !matches!(var.kind, VariableDeclarationKind::Const) {
+                            binding_names(&decl.id.kind, &mut plain_lets);
                         }
                     }
                     plain_stmts.push(var.span);
@@ -1856,6 +1856,29 @@ fn store_deps(code: &str) -> Option<std::collections::BTreeSet<String>> {
         rest = &rest[pos + 3..];
     }
     Some(deps)
+}
+
+fn binding_names(kind: &BindingPatternKind, out: &mut Vec<String>) {
+    match kind {
+        BindingPatternKind::BindingIdentifier(id) => out.push(id.name.to_string()),
+        BindingPatternKind::ObjectPattern(obj) => {
+            for p in &obj.properties {
+                binding_names(&p.value.kind, out);
+            }
+            if let Some(rest) = &obj.rest {
+                binding_names(&rest.argument.kind, out);
+            }
+        }
+        BindingPatternKind::ArrayPattern(arr) => {
+            for e in arr.elements.iter().flatten() {
+                binding_names(&e.kind, out);
+            }
+            if let Some(rest) = &arr.rest {
+                binding_names(&rest.argument.kind, out);
+            }
+        }
+        BindingPatternKind::AssignmentPattern(a) => binding_names(&a.left.kind, out),
+    }
 }
 
 fn references_any(body: &str, names: &[String]) -> bool {
