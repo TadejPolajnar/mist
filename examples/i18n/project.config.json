@@ -1,0 +1,11 @@
+{
+  "miniprogramRoot": "dist/",
+  "projectname": "mist-i18n",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": true,
+    "urlCheck": false,
+    "minifyWXML": true
+  }
+}

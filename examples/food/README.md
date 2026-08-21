@@ -17,6 +17,9 @@ A tea-shop ordering app. This is the flagship mist example.
   values.
 - Cross-tab navigation intent through a small `ui` store, because
   `wx.switchTab` cannot carry query parameters.
+- A `sizeBudget: '1MB'` in `app.mist`: every build ends with a per-package
+  size summary (`size: main 119KB, order 5KB, ...`), and M1029 warns if the
+  main package or the `order` subpackage ever outgrows the budget.
 
 ## Run it
 

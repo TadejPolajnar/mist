@@ -27,3 +27,15 @@ mistc build examples/feed/src -o examples/feed/dist
 Open `examples/feed` in WeChat DevTools, then watch the Console while you
 press 全量渲染. The gate suite is `tests/examples_feed.rs` — it simulates the
 1 MB rejection in Node against the compiled page.
+
+## Snapshots
+
+This app also carries committed compiler goldens in `snapshots/`:
+
+```sh
+mistc test examples/feed --snapshots   # diff emitted output vs the goldens
+mistc test examples/feed --update      # accept intentional codegen changes
+```
+
+Any compiler upgrade that changes the emitted WXML/JS/WXSS shows up here as
+per-file drift before it reaches DevTools.

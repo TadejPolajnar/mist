@@ -2,6 +2,7 @@
 import { onLaunch, onError, onPageNotFound, onUnhandledRejection, onThemeChange } from 'mist'
 
 export const config = {
+  sizeBudget: '1MB',
   window: {
     navigationBarTitleText: '雾茶 MistTea',
     navigationBarBackgroundColor: '#ffffff',

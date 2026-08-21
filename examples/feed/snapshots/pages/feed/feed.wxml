@@ -1,0 +1,24 @@
+<view class="min-h-screen bg-page pb-8">
+  <view class="flex items-center justify-between px-4 py-3 bg-white border-b border-hairline">
+    <text class="text-caption text-mute">内存 {{headerStats.total}} 条 · {{headerStats.sizeStr}}</text>
+    <text class="text-caption text-primary">已渲染 {{headerStats.shownCount}} 条</text>
+  </view>
+  <block wx:for="{{visible}}" wx:for-item="p" wx:key="id">
+    <view class="bg-white border-b border-hairline px-4 py-3">
+      <view class="flex items-center justify-between">
+        <text class="text-body text-ink font-semibold">{{p.avatar}}{{p.author}}</text>
+        <text class="text-caption text-faint">{{p.time}}</text>
+      </view>
+      <text class="block text-body text-ink mt-1_5">{{p.text}}</text>
+      <view class="flex items-center justify-between mt-2">
+        <text class="text-caption text-faint">#{{p.id}}</text>
+        <view bindtap="_e0" data-a0="{{p.id}}" hover-class="pressed" class="px-3 py-1 rounded-full bg-tile">
+          <text class="text-caption {{p.liked ? 'text-danger' : ''}} {{!p.liked ? 'text-mute' : ''}}">♥ {{p.likes}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+  <view bindtap="reload" hover-class="pressed" class="mx-4 mt-4 rounded-full bg-primary py-2_5 flex items-center justify-center">
+    <text class="text-cell text-white font-semibold">换一批（重新生成 1000 条）</text>
+  </view>
+</view>

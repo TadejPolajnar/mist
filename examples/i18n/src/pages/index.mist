@@ -1,0 +1,19 @@
+---
+import { onShow } from 'mist'
+import { t, locale, setLocale } from '../stores/locale.ts'
+
+export const config = { navigationBarTitleText: 'Mist i18n' }
+
+onShow(() => {
+  wx.setNavigationBarTitle({ title: t('nav.title') })
+})
+
+function toggle() {
+  setLocale(locale.value === 'en' ? 'zh' : 'en')
+}
+---
+<div class="p-6 flex flex-col gap-4">
+  <span class="text-2xl font-bold">{t('greet.title')}</span>
+  <span class="text-gray-500">{t('greet.body')}</span>
+  <button class="rounded-full bg-blue-500 text-white p-3" onTap={toggle}>{t('action.switch')}</button>
+</div>

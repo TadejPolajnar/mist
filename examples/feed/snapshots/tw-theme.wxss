@@ -1,0 +1,18 @@
+page {
+    --color-white: #fff;
+    --spacing: 8rpx;
+    --font-weight-semibold: 600;
+    --radius-lg: 16rpx;
+    --color-primary: #07c160;
+    --color-danger: #fa5151;
+    --color-page: #f7f7f7;
+    --color-ink: #1a1a1a;
+    --color-mute: #888888;
+    --color-faint: #b2b2b2;
+    --color-hairline: #ececec;
+    --color-tile: #f2f2f2;
+    --color-nudge: #fff7e6;
+    --color-nudge-ink: #b26205;
+    --text-caption: 12px;
+    --text-body: 14px;
+    --text-cell: 17px; }

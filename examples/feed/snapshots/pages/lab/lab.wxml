@@ -1,0 +1,37 @@
+<view class="min-h-screen bg-page pb-8">
+  <text class="block text-caption text-faint uppercase px-4 pt-4 pb-2">分页渲染</text>
+  <view class="mx-4 rounded-lg bg-white overflow-hidden">
+    <view class="flex items-center justify-between px-4 py-3 border-b border-hairline">
+      <view class="flex flex-col">
+        <text class="text-cell text-ink">每页条数</text>
+        <text class="text-caption text-faint">信息流触底时按此步长加载</text>
+      </view>
+      <view class="flex items-center gap-2">
+        <view bindtap="smallerPages" hover-class="pressed" class="w-7 h-7 rounded-full border border-hairline flex items-center justify-center">
+          <text class="text-cell text-ink">−</text>
+        </view>
+        <text class="text-cell text-ink min-w-14 text-center">{{pageSizeStr}}</text>
+        <view bindtap="biggerPages" hover-class="pressed" class="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+          <text class="text-cell text-white">+</text>
+        </view>
+      </view>
+    </view>
+    <view class="px-4 py-3">
+      <text class="text-caption text-mute">信息流页把全部 1000 条（约 1.1 MB）留在页面实例上——模板没有读它，编译器的死数据消除让它完全不过 setData 桥。只有可见切片进入 data。</text>
+    </view>
+  </view>
+  <text class="block text-caption text-faint uppercase px-4 pt-4 pb-2">压力测试</text>
+  <view class="mx-4 rounded-lg bg-nudge px-4 py-3">
+    <text class="text-caption text-nudge-ink">「全量渲染」会把全部 1000 条一次写入 data——单次 setData 接近微信 1 MB 上限，很可能被拒绝。运行时会回滚本页状态并从 store 重新同步；点「恢复分页渲染」即可继续使用。打开调试器 Console 观察。</text>
+  </view>
+  <block wx:if="{{!lab.fullRender}}">
+    <view bindtap="enableFull" hover-class="pressed" class="mx-4 mt-3 rounded-full bg-danger py-2_5 flex items-center justify-center">
+      <text class="text-cell text-white font-semibold">全量渲染（触发 1 MB setData）</text>
+    </view>
+  </block>
+  <block wx:if="{{lab.fullRender}}">
+    <view bindtap="disableFull" hover-class="pressed" class="mx-4 mt-3 rounded-full bg-primary py-2_5 flex items-center justify-center">
+      <text class="text-cell text-white font-semibold">恢复分页渲染</text>
+    </view>
+  </block>
+</view>

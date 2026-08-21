@@ -98,7 +98,11 @@ function toggle(id) {
 | <img src="examples/food/screenshot.png" width="220" alt="MistTea" /> | <img src="examples/portfolio/screenshot.png" width="220" alt="MistFolio" /> | <img src="examples/kanban/screenshot.png" width="220" alt="MistBoard" /> |
 | persisted cart + orders, checkout subpackage, tab icons, `migrate` | 13-node derived graph, keyed diffing, deterministic ticks | keyed reorders, cross-store deriveds, WIP limits |
 
-Each ships a README, a gate test suite, and a DevTools-ready `project.config.json`.
+Also in [examples/](examples/): [雾讯 · feed](examples/feed) (setData budget
+lab + committed compiler snapshots), [雾账 · ledger](examples/ledger)
+(persisted expense tracker), and [雾语 · i18n](examples/i18n) (runtime
+language switching, the [docs/i18n.md](docs/i18n.md) recipe as an app).
+Each ships a README, tests, and a DevTools-ready `project.config.json`.
 
 ## Working on the compiler
 
