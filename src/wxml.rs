@@ -86,7 +86,7 @@ pub fn emit(
         format!(r"\b({})\.value", reactive_names.join("|"))
     };
     let mut ctx = Ctx {
-        strip_value: Regex::new(&pattern).map_err(|e| e.to_string())?,
+        strip_value: crate::frontmatter::cached_regex(&pattern)?,
         handlers: Vec::new(),
         components: components.to_vec(),
         inline: inline.to_vec(),
@@ -97,7 +97,7 @@ pub fn emit(
         class_hoists: Vec::new(),
         for_hoists: Vec::new(),
         rewrites: Vec::new(),
-        call_re: Regex::new(r"[A-Za-z0-9_\]]\s*\(").map_err(|e| e.to_string())?,
+        call_re: crate::frontmatter::cached_regex(r"[A-Za-z0-9_\]]\s*\(")?,
         loop_params: Vec::new(),
         loop_frames: Vec::new(),
         unknown_tags: Vec::new(),
@@ -358,7 +358,7 @@ fn emit_inline_use(
 
 /// call-containing expressions that mention the loop item (skips nested loops)
 fn collect_item_calls(nodes: &[Node], param: &str, call_re: &Regex, out: &mut Vec<String>) {
-    let param_re = Regex::new(&format!(r"\b{}\b", regex::escape(param))).unwrap();
+    let param_re = crate::frontmatter::cached_regex(&format!(r"\b{}\b", regex::escape(param))).unwrap();
     fn consider(e: &str, call_re: &Regex, param_re: &Regex, out: &mut Vec<String>) {
         let t = e.trim();
         if call_re.is_match(t) && param_re.is_match(t) && !out.iter().any(|x| x == t) {

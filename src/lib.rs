@@ -1004,6 +1004,8 @@ fn new_project_ctx(layout: Layout) -> ProjectCtx {
         npm_packages: std::collections::BTreeSet::new(),
         min_lib: None,
         size_budget: None,
+        store_info_memo: std::cell::RefCell::new(std::collections::HashMap::new()),
+        inlinable_memo: std::cell::RefCell::new(std::collections::HashMap::new()),
         seen: Vec::new(),
         files: Vec::new(),
         classes: Vec::new(),
@@ -1302,6 +1304,11 @@ struct ProjectCtx {
     min_lib: Option<String>,
     /// app.mist's `config.sizeBudget` in bytes — opt-in M1029 threshold
     size_budget: Option<u64>,
+    /// canonical store path → parsed module info; store modules are imported by
+    /// many units but only ever analyzed once
+    store_info_memo: std::cell::RefCell<std::collections::HashMap<PathBuf, Option<frontmatter::StoreModuleInfo>>>,
+    /// canonical component path → is_inlinable verdict, shared across importers
+    inlinable_memo: std::cell::RefCell<std::collections::HashMap<PathBuf, bool>>,
     seen: Vec<PathBuf>,
     files: Vec<CompiledFile>,
     classes: Vec<String>,
@@ -1390,21 +1397,36 @@ fn compile_rec_at(
 
     // decide which imports can be inlined before compiling this unit
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let store_memo = &ctx.store_info_memo;
     let resolver = |import_path: &str| -> Option<frontmatter::StoreModuleInfo> {
         let store_path = dir.join(import_path);
-        let src = std::fs::read_to_string(&store_path).ok()?;
-        frontmatter::store_module_info(&src).ok()
+        let key = store_path.canonicalize().unwrap_or(store_path);
+        if let Some(hit) = store_memo.borrow().get(&key) {
+            return hit.clone();
+        }
+        let info = std::fs::read_to_string(&key)
+            .ok()
+            .and_then(|src| frontmatter::store_module_info(&src).ok());
+        store_memo.borrow_mut().insert(key, info.clone());
+        info
     };
     let sfc = sfc::split(&source).map_err(|e| format!("{}: {}", path.display(), e))?;
-    let analysis = frontmatter::analyze_with_stores(sfc.frontmatter, &resolver, sfc.frontmatter_line)
-        .map_err(|e| format!("{}: {}", path.display(), e))?;
     let mut inline: Vec<String> = Vec::new();
-    for import in &analysis.imports {
+    for import in frontmatter::mist_import_list(sfc.frontmatter) {
         let child_path = dir.join(&import.path);
-        if let Ok(child_src) = std::fs::read_to_string(&child_path) {
-            if is_inlinable(&child_src) {
-                inline.push(import.local.clone());
+        let key = child_path.canonicalize().unwrap_or(child_path);
+        let cached = ctx.inlinable_memo.borrow().get(&key).copied();
+        let verdict = match cached {
+            Some(v) => v,
+            None => {
+                let v = std::fs::read_to_string(&key)
+                    .is_ok_and(|child_src| is_inlinable(&child_src));
+                ctx.inlinable_memo.borrow_mut().insert(key, v);
+                v
             }
+        };
+        if verdict {
+            inline.push(import.local);
         }
     }
     let floor = ctx.min_lib.clone();

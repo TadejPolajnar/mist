@@ -10,6 +10,30 @@ use regex::Regex;
 use crate::template;
 use crate::wxml::Handler;
 
+/// Pattern-keyed regex memo — `Rewriter` patterns repeat across every unit of
+/// a project build, and `Regex::new` dominates otherwise. Clones share the
+/// compiled program.
+pub(crate) fn cached_regex(pattern: &str) -> Result<Regex, String> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<std::collections::HashMap<String, Regex>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    CACHE.with(|c| {
+        if let Some(re) = c.borrow().get(pattern) {
+            return Ok(re.clone());
+        }
+        let re = Regex::new(pattern).map_err(|e| e.to_string())?;
+        let mut map = c.borrow_mut();
+        // long-running hosts (LSP, --watch) see ever-changing state names;
+        // reset rather than grow without bound
+        if map.len() >= 4096 {
+            map.clear();
+        }
+        map.insert(pattern.to_string(), re.clone());
+        Ok(re)
+    })
+}
+
 pub struct NpmImport {
     pub package: String,
     pub default_local: Option<String>,
@@ -2512,6 +2536,34 @@ pub fn store_module_info(src: &str) -> Result<StoreModuleInfo, String> {
     compile_store_module(src, "./mist-rt.js").map(|(_, info)| info)
 }
 
+/// Parse-only `.mist` component-import lister for the inlining pre-pass —
+/// skips all analysis; unresolved or malformed imports surface later in the
+/// full analyze with proper diagnostics.
+pub fn mist_import_list(src: &str) -> Vec<MistImport> {
+    let allocator = Allocator::default();
+    let ret = Parser::new(&allocator, src, SourceType::default().with_typescript(true)).parse();
+    let mut out = Vec::new();
+    for stmt in &ret.program.body {
+        let Statement::ImportDeclaration(import) = stmt else { continue };
+        let path = import.source.value.to_string();
+        if !path.ends_with(".mist") {
+            continue;
+        }
+        let local = import.specifiers.as_ref().and_then(|specs| {
+            specs.iter().find_map(|s| match s {
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(d) => {
+                    Some(d.local.name.to_string())
+                }
+                _ => None,
+            })
+        });
+        if let Some(local) = local {
+            out.push(MistImport { local, path });
+        }
+    }
+    out
+}
+
 /// Convert an `export const config = {...}` object literal into JSON, properly —
 /// quote-aware via the real parser, not regex.
 pub fn config_literal_to_json(literal: &str) -> Result<String, String> {
@@ -2895,29 +2947,26 @@ impl Rewriter {
             None
         } else {
             Some(
-                Regex::new(&format!(r"(^|[^.\w$])({})\s*\(", methods.join("|")))
-                    .map_err(|e| e.to_string())?,
+                cached_regex(&format!(r"(^|[^.\w$])({})\s*\(", methods.join("|")))?,
             )
         };
         // `(^|[^.\w])` guard: don't re-prefix reads already behind the module alias
         let store_reads = store_accessors
             .iter()
             .map(|(root, acc)| {
-                Regex::new(&format!(r"(^|[^.\w]){}\.value", root))
+                cached_regex(&format!(r"(^|[^.\w]){}\.value", root))
                     .map(|re| (re, format!("${{1}}{}.value", acc)))
-                    .map_err(|e| e.to_string())
             })
             .collect::<Result<Vec<_>, String>>()?;
         let unbound_reads = unbound
             .iter()
             .map(|root| {
-                Regex::new(&format!(r"\b{}\.value", root))
+                cached_regex(&format!(r"\b{}\.value", root))
                     .map(|re| (re, format!("this._{}", root)))
-                    .map_err(|e| e.to_string())
             })
             .collect::<Result<Vec<_>, String>>()?;
         Ok(Rewriter {
-            reads: Regex::new(&reads_pattern).map_err(|e| e.to_string())?,
+            reads: cached_regex(&reads_pattern)?,
             calls,
             store_reads,
             unbound_reads,
