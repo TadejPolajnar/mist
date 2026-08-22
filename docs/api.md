@@ -122,7 +122,7 @@ dist/
 ├── app.js  app.json  app.wxss  sitemap.json
 │                               # app.json enables lazyCodeLoading:
 │                               # "requiredComponents" (set your own to override)
-├── mist-rt.js                  # the runtime (~9 KB, comment-stripped)
+├── mist-rt.js                  # the runtime (~10 KB, comment-stripped)
 ├── tw-shared.wxss              # tailwind utilities (imported by every unit)
 ├── tw-theme.wxss               # page{} theme vars (imported by pages only)
 ├── pages/<name>/<name>.{js,wxml,wxss,json}
@@ -150,6 +150,10 @@ You never import this — generated code does. For debugging, its surface:
   WeChat's 1MB limit) rolls the page's local mirror back, and store-bound
   pages then reseed their mirrors from current store values — a failed batch
   never leaves a page desynced from its stores.
+- `trace(on = true)` — log every `setData` to the console as
+  `[mist] <bytes>B <keys>`. Enable during development with a plain
+  `rt.trace(true)` statement in any page's frontmatter (it passes through
+  to the emitted JS); remove it before release.
 - `init(page)` — first-render derive seed (called from generated `onLoad`/`attached`).
 - `applyPath(obj, path, value)` — path-string writer used by the batcher.
 - `derive(page, out, name, key, compute, deps)` — recompute one derived with

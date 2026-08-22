@@ -4,7 +4,7 @@
 
 Mist is a **component language and compiler for WeChat Mini Programs**: you write
 Astro-flavored single-file `.mist` components; `mistc` (Rust) compiles them to
-plain WXML/WXSS/JS with path-precise `setData` and a ~9 KB runtime.
+plain WXML/WXSS/JS with path-precise `setData` and a ~10 KB runtime.
 
 These docs describe **what is implemented today**. The full language design lives
 in [../SPEC.md](../SPEC.md) — parts of it are still design-only; when the two

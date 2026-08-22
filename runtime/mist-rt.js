@@ -31,6 +31,12 @@ function setDataBudget(bytes) {
   budget = bytes;
 }
 
+let tracing = false;
+
+function trace(on) {
+  tracing = on !== false;
+}
+
 function utf8Len(s) {
   let n = 0;
   for (let i = 0; i < s.length; i++) {
@@ -54,6 +60,10 @@ function utf8Len(s) {
 function send(page, payload) {
   const keys = Object.keys(payload);
   if (keys.length < 2) {
+    if (tracing) {
+      const v = payload[keys[0]];
+      console.log('[mist] ' + (v === undefined ? 9 : utf8Len(JSON.stringify(v))) + 'B ' + keys[0]);
+    }
     page.setData(payload);
     return;
   }
@@ -67,6 +77,7 @@ function send(page, payload) {
     return s;
   });
   if (total <= budget || oversized) {
+    if (tracing) console.log('[mist] ' + total + 'B ' + keys.join(' '));
     page.setData(payload);
     return;
   }
@@ -74,6 +85,7 @@ function send(page, payload) {
   let chunkSize = 0;
   for (let i = 0; i < keys.length; i++) {
     if (chunkSize > 0 && chunkSize + sizes[i] > budget) {
+      if (tracing) console.log('[mist] ' + chunkSize + 'B ' + Object.keys(chunk).join(' '));
       page.setData(chunk);
       chunk = {};
       chunkSize = 0;
@@ -81,6 +93,7 @@ function send(page, payload) {
     chunk[keys[i]] = payload[keys[i]];
     chunkSize += sizes[i];
   }
+  if (tracing) console.log('[mist] ' + chunkSize + 'B ' + Object.keys(chunk).join(' '));
   page.setData(chunk);
 }
 
@@ -455,6 +468,7 @@ module.exports = {
   touch,
   flush,
   setDataBudget,
+  trace,
   init,
   derive,
   applyPath,

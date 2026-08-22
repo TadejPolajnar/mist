@@ -674,3 +674,59 @@ setTimeout(() => {
     );
     assert_eq!(out, "OK");
 }
+
+#[test]
+fn trace_logs_patches_when_enabled() {
+    let out = run_node(
+        r#"
+const logs = [];
+const origLog = console.log;
+console.log = (...a) => logs.push(a.join(' '));
+rt.trace(true);
+const calls = [];
+const page = {
+  data: { count: 0 },
+  setData(o) { calls.push(o); },
+  __derive() { return {}; },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('count', 1);
+setTimeout(() => {
+  console.log = origLog;
+  const mistLogs = logs.filter(l => l.startsWith('[mist]'));
+  if (mistLogs.length !== 1) throw new Error('expected 1 mist log, got ' + mistLogs.length);
+  if (!mistLogs[0].includes('count')) throw new Error('log missing key: ' + mistLogs[0]);
+  console.log('OK');
+}, 0);
+"#,
+    );
+    assert_eq!(out, "OK");
+}
+
+#[test]
+fn trace_off_by_default_logs_nothing() {
+    let out = run_node(
+        r#"
+const logs = [];
+const origLog = console.log;
+console.log = (...a) => logs.push(a.join(' '));
+const calls = [];
+const page = {
+  data: { count: 0 },
+  setData(o) { calls.push(o); },
+  __derive() { return {}; },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('count', 1);
+setTimeout(() => {
+  console.log = origLog;
+  const mistLogs = logs.filter(l => l.startsWith('[mist]'));
+  if (mistLogs.length !== 0) throw new Error('expected 0 mist logs, got ' + mistLogs.length);
+  console.log('OK');
+}, 0);
+"#,
+    );
+    assert_eq!(out, "OK");
+}

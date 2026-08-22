@@ -24,7 +24,7 @@
 
 ---
 
-Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template + Tailwind), get plain `Page()`/`Component()` mini-program code with **path-precise `setData`**: the compiler statically tracks every state mutation and emits the exact data path it changes. No virtual DOM, no runtime tree diffing, a ~9 KB runtime (2.9 KB gzipped).
+Write single-file `.mist` components (TypeScript frontmatter + JSX-ish template + Tailwind), get plain `Page()`/`Component()` mini-program code with **path-precise `setData`**: the compiler statically tracks every state mutation and emits the exact data path it changes. No virtual DOM, no runtime tree diffing, a ~10 KB runtime (2.9 KB gzipped).
 
 ```
 ┌──────────────┐     mistc (Rust)      ┌──────────────────────────────┐
@@ -228,7 +228,7 @@ machine. The full story behind these numbers is in the
 4. **`tailwind_cli`** runs real Tailwind and rewrites its modern CSS for WXSS
 5. **`lib`** orchestrates the project graph (components, inlining decisions, stores, layouts) and **`main`** writes the WeChat directory tree
 
-The emitted JS is deliberately readable (WeChat DevTools can't load source maps): plain `Page({...})` objects with your names intact, plus a `require('mist-rt.js')` — the ~9 KB runtime that does batching, keyed diffs, store subscriptions, and rollback on rejected setData.
+The emitted JS is deliberately readable (WeChat DevTools can't load source maps): plain `Page({...})` objects with your names intact, plus a `require('mist-rt.js')` — the ~10 KB runtime that does batching, keyed diffs, store subscriptions, and rollback on rejected setData.
 
 ## Status
 
