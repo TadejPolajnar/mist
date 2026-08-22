@@ -3,8 +3,8 @@
 [English → testing.md](testing.md)
 
 `mistc test` 编译你的 `src/`，并在一个 Node 测试环境中运行每个
-`tests/*.test.js` 文件——用 `Page`/`wx` 桩启动编译后的页面。不需要真机、
-不需要开发者工具，除 Node 外没有任何额外依赖。
+`tests/*.test.js` 文件——用 `Page`/`Component`/`wx` 桩启动编译后的页面和
+组件。不需要真机、不需要开发者工具，除 Node 外没有任何额外依赖。
 
 ```sh
 mistc test                   # 在项目根目录运行（src/ + tests/）
@@ -65,6 +65,23 @@ module.exports = async () => {
     `patches` 仍可能增加一条。
   - `lastPatch()` —— 最近一次 patch，或 `null`。
   - `totalBytes()` —— 所有 patch 大小之和。
+- **`bootComponent(name, options?)`** —— require 编译后的组件并运行其
+  `attached`/`ready` 生命周期。`name` 是组件短名（`'badge'` →
+  `components/badge/badge.js`）或相对 dist 的路径。选项：
+  - `props` —— 为每个声明的属性填充 `data` 初值；省略时回退到该属性的
+    默认 `value`。
+  - `setDataLimit` —— 含义同 `bootPage`。
+
+  返回一个句柄：
+  - `comp` —— 注册的 Component 实例：调用你的方法（`c.comp.bump()`）、
+    读取 `comp.data`。
+  - `data()` —— `comp.data` 的快捷方式。
+  - `patches`、`rejected`、`lastPatch()`、`totalBytes()` —— 形状与
+    `bootPage` 相同。
+  - `events` —— 到目前为止的每次 `triggerEvent` 调用，形状为
+    `{ name, detail, opts }`。
+  - `setProp(key, value)` —— 模拟父组件推送新的属性值；在断言读取它的
+    派生值之前先 `await flush()`。
 - **`flush(ms = 0)`** —— 变更后 await 它：运行时在微任务中批量合并
   `setData`，所以要在 `await flush()` 之后再断言。
 - **`load(name)`** —— 按相对 dist 的路径 require 任何编译产物
@@ -82,11 +99,11 @@ module.exports = async () => {
 
 这是一个**逻辑测试环境，不是渲染器**。它在 Node 中运行编译后的页面
 JS——状态、派生值、方法、store、持久化、`setData` payload。没有 WXML
-渲染、没有组件树、没有事件冒泡，除存储外也没有 `wx` API 的真实行为：
-`wx.request` 等都是被记录的空操作，由你断言或自行进一步打桩。只有页面
-可以启动：对组件单元调用 `bootPage` 会带解释地失败——请通过使用它的
-页面来测试组件逻辑。除非测试自己注册 `App`，否则 `getApp()` 返回
-`{}`。像素级/交互测试请用微信开发者工具（可配合
+渲染、没有插槽内容、没有事件冒泡，除存储外也没有 `wx` API 的真实行为：
+`wx.request` 等都是被记录的空操作，由你断言或自行进一步打桩。`bootPage`
+与 `bootComponent` 各自会带解释地拒绝对方的文件，并指出该调用哪一个。
+除非测试自己注册 `App`，否则 `getApp()` 返回 `{}`。像素级/交互测试请用
+微信开发者工具（可配合
 `miniprogram-automator` 驱动）。
 
 `mistc init` 会脚手架出一个可直接运行的 `tests/index.test.js`——从它

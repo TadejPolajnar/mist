@@ -113,6 +113,77 @@ fn test_command_runs_scaffolded_suite() {
 }
 
 #[test]
+fn test_harness_boots_components() {
+    let dir = std::env::temp_dir().join("mist-cli-test-component");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    if !node_available() {
+        eprintln!("skipping: node not available");
+        return;
+    }
+    let root = dir.join("app");
+
+    std::fs::create_dir_all(root.join("src/components")).unwrap();
+    std::fs::write(
+        root.join("src/components/Badge.mist"),
+        "---\nimport { state, props } from 'mist'\nconst { label, onPick } = props({ label: '' })\nconst hits = state(0)\nfunction bump() { hits.value++; onPick(hits.value) }\n---\n<span class=\"b\" onTap={bump}>{label} {hits.value}</span>\n",
+    )
+    .unwrap();
+
+    let index = std::fs::read_to_string(root.join("src/pages/index.mist")).unwrap();
+    let index = index.replacen(
+        "import { state, derived } from 'mist'\n",
+        "import { state, derived } from 'mist'\nimport Badge from '../components/Badge.mist'\n",
+        1,
+    );
+    let index = format!("{}\n<Badge label=\"x\" onPick={{pick}} />\n", index.trim_end());
+    let index = index.replacen(
+        "function add() {",
+        "function pick() {}\n\nfunction add() {",
+        1,
+    );
+    std::fs::write(root.join("src/pages/index.mist"), index).unwrap();
+
+    std::fs::write(
+        root.join("tests/badge.test.js"),
+        r#"const assert = require('node:assert');
+module.exports = async () => {
+  const c = bootComponent('badge', { props: { label: 'hi' } });
+  assert.equal(c.data().label, 'hi');
+  c.comp.bump();
+  await flush();
+  assert.equal(c.data().hits, 1);
+  assert.equal(c.events[0].name, 'pick');
+  assert.deepEqual(c.events[0].detail.args, [0]);
+  c.setProp('label', 'yo');
+  await flush();
+  assert.equal(c.data().label, 'yo');
+  let msg = '';
+  try { bootPage('components/badge/badge'); } catch (e) { msg = e.message; }
+  assert.ok(msg.includes('use bootComponent'), msg);
+};
+"#,
+    )
+    .unwrap();
+
+    let out = Command::new(bin())
+        .args(["test", "--filter", "badge"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "mistc test failed:\nstdout: {}\nstderr: {}",
+        stdout,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(stdout.contains("PASS tests/badge.test.js"), "stdout:\n{}", stdout);
+}
+
+#[test]
 fn test_command_watch_reruns_on_change() {
     use std::io::BufRead;
     let dir = std::env::temp_dir().join("mist-cli-test-watch");

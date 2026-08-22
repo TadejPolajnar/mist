@@ -8,6 +8,8 @@ if (!dist || !testFile) {
   process.exit(2);
 }
 
+const rt = require(path.join(dist, 'mist-rt.js'));
+
 const storage = new Map();
 const wxCalls = [];
 const appHideHandlers = [];
@@ -81,25 +83,16 @@ function distFile(name) {
   return path.join(dist, rel.endsWith('.js') ? rel : rel + '.js');
 }
 
-function bootPage(name, options = {}) {
-  const file = distFile(name);
-  capturedPage = null;
-  globalThis.__component = null;
-  delete require.cache[require.resolve(file)];
-  require(file);
-  if (!capturedPage) {
-    if (globalThis.__component) {
-      throw new Error(
-        `${file} registered a Component — component units aren't bootable; test them through a page that uses them`
-      );
-    }
-    throw new Error(`${file} did not register a Page`);
-  }
-  const page = capturedPage;
+function componentFile(name) {
+  const rel = name.includes('/') ? name : `components/${name}/${name}`;
+  return path.join(dist, rel.endsWith('.js') ? rel : rel + '.js');
+}
+
+function instrument(target, options) {
   const patches = [];
   const rejected = [];
   const limit = options.setDataLimit ?? 1024 * 1024;
-  page.setData = function (patch, cb) {
+  target.setData = function (patch, cb) {
     const size = Buffer.byteLength(JSON.stringify(patch));
     if (size > limit) {
       rejected.push({ keys: Object.keys(patch), size, patch });
@@ -109,6 +102,23 @@ function bootPage(name, options = {}) {
     applyPatch(this.data, patch);
     if (cb) cb();
   };
+  return { patches, rejected };
+}
+
+function bootPage(name, options = {}) {
+  const file = distFile(name);
+  capturedPage = null;
+  globalThis.__component = null;
+  delete require.cache[require.resolve(file)];
+  require(file);
+  if (!capturedPage) {
+    if (globalThis.__component) {
+      throw new Error(`${file} registered a Component — use bootComponent('${name}')`);
+    }
+    throw new Error(`${file} did not register a Page`);
+  }
+  const page = capturedPage;
+  const { patches, rejected } = instrument(page, options);
   if (page.onLoad) page.onLoad(options.query ?? {});
   return {
     page,
@@ -117,6 +127,53 @@ function bootPage(name, options = {}) {
     rejected,
     lastPatch: () => patches[patches.length - 1] ?? null,
     totalBytes: () => patches.reduce((n, p) => n + p.size, 0),
+  };
+}
+
+function bootComponent(name, options = {}) {
+  const file = componentFile(name);
+  let registered = null;
+  capturedPage = null;
+  globalThis.__component = null;
+  globalThis.Component = (o) => {
+    registered = o;
+  };
+  delete require.cache[require.resolve(file)];
+  require(file);
+  globalThis.Component = (o) => {
+    globalThis.__component = o;
+  };
+  if (!registered) {
+    if (capturedPage) {
+      throw new Error(`${name} is a page — use bootPage('${name}')`);
+    }
+    throw new Error(`${file} did not register a Component`);
+  }
+  const instance = {
+    data: JSON.parse(JSON.stringify(registered.data ?? {})),
+  };
+  for (const [key, prop] of Object.entries(registered.properties ?? {})) {
+    instance.data[key] = options.props?.[key] ?? prop.value;
+  }
+  Object.assign(instance, registered.methods);
+  const { patches, rejected } = instrument(instance, options);
+  const events = [];
+  instance.triggerEvent = (name, detail, opts) => events.push({ name, detail, opts });
+  if (registered.lifetimes?.attached) registered.lifetimes.attached.call(instance);
+  if (registered.lifetimes?.ready) registered.lifetimes.ready.call(instance);
+  function setProp(key, value) {
+    instance.data[key] = value;
+    rt.touch(instance, key);
+  }
+  return {
+    comp: instance,
+    data: () => instance.data,
+    patches,
+    rejected,
+    lastPatch: () => patches[patches.length - 1] ?? null,
+    totalBytes: () => patches.reduce((n, p) => n + p.size, 0),
+    events,
+    setProp,
   };
 }
 
@@ -142,6 +199,7 @@ function appHide() {
 }
 
 globalThis.bootPage = bootPage;
+globalThis.bootComponent = bootComponent;
 globalThis.flush = flush;
 globalThis.load = load;
 globalThis.resetModules = resetModules;

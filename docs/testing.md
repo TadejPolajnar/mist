@@ -3,8 +3,9 @@
 [中文 → testing.zh-CN.md](testing.zh-CN.md)
 
 `mistc test` compiles your `src/` and runs every `tests/*.test.js` file in a
-Node harness that boots your compiled pages with `Page`/`wx` stubs. No
-device, no DevTools, no extra dependencies beyond Node.
+Node harness that boots your compiled pages and components with
+`Page`/`Component`/`wx` stubs. No device, no DevTools, no extra dependencies
+beyond Node.
 
 ```sh
 mistc test                   # from the project root (src/ + tests/)
@@ -67,6 +68,23 @@ These globals are available in every test file:
     patch, so `patches` may still grow by one after a rejection.
   - `lastPatch()` — the most recent patch, or `null`.
   - `totalBytes()` — sum of all patch sizes.
+- **`bootComponent(name, options?)`** — requires the compiled component and
+  runs its `attached`/`ready` lifetimes. `name` is a component short name
+  (`'badge'` → `components/badge/badge.js`) or a dist-relative path. Options:
+  - `props` — seeds `data` for each declared property; falls back to the
+    property's default `value` when omitted.
+  - `setDataLimit` — same meaning as `bootPage`.
+
+  Returns a handle:
+  - `comp` — the registered Component instance: call your methods
+    (`c.comp.bump()`), read `comp.data`.
+  - `data()` — shortcut for `comp.data`.
+  - `patches`, `rejected`, `lastPatch()`, `totalBytes()` — same shapes as
+    `bootPage`.
+  - `events` — every `triggerEvent` call so far, as
+    `{ name, detail, opts }`.
+  - `setProp(key, value)` — simulates a parent pushing a new property value;
+    await `flush()` before asserting on deriveds that read it.
 - **`flush(ms = 0)`** — await after a mutation: the runtime batches
   `setData` in microtasks, so assert only after `await flush()`.
 - **`load(name)`** — `require` any compiled module by dist-relative path
@@ -84,12 +102,12 @@ These globals are available in every test file:
 
 This is a **logic harness, not a renderer**. It runs your compiled page JS in
 Node — state, deriveds, methods, stores, persistence, `setData` payloads.
-There is no WXML rendering, no component tree, no event bubbling, and no
+There is no WXML rendering, no slot content, no event bubbling, and no
 `wx` API behavior beyond storage: `wx.request` etc. are recorded no-ops you
-assert on or stub further yourself. Only pages boot: `bootPage` on a
-component unit fails with an explanation — test component logic through a
-page that uses it. `getApp()` returns `{}` unless your test registers an
-`App` itself. For pixel/interaction testing, use WeChat DevTools
+assert on or stub further yourself. `bootPage` and `bootComponent` each
+reject the other's file with an explanation pointing at the right call.
+`getApp()` returns `{}` unless your test registers an `App` itself. For
+pixel/interaction testing, use WeChat DevTools
 (optionally driven by `miniprogram-automator`).
 
 `mistc init` scaffolds a working `tests/index.test.js` — start from there.
