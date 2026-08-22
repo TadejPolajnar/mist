@@ -474,6 +474,27 @@ export const config = {
 
 在项目目录的每次构建中（平铺单文件构建除外），`src/assets/**` 被原样复制到 `dist/assets/**`。在模板或 `app.mist` 的 config 中以 `/assets/...` 或相对路径引用这些文件，例如 `tabBar.list[].iconPath: "assets/tab-home.png"`。隐藏文件（以 `.` 开头的名称）被跳过。已删除的源文件在重建时从 `dist` 中清理。`assets/` 内的符号链接被跳过。
 
+## 第三方组件（`miniprogram_npm`）
+
+微信按 `miniprogramRoot` 下的 `miniprogram_npm` 目录解析 `usingComponents`
+中的裸模块名，因此在项目目录的每次构建中（平铺单文件构建除外），mistc 把
+`src/miniprogram_npm/**` 原样复制到 `dist/miniprogram_npm/**`。已删除的源文件
+在重建时从 `dist` 中清理，符号链接会被跳过——规则与 `assets/` 相同。
+
+mistc 不执行微信的「构建 npm」步骤。请先生成该目录（开发者工具的**构建 npm**
+命令，或 `miniprogram-ci` 的 `packNpm`），再把结果放到 `src/miniprogram_npm/`，
+并手动注册组件：
+
+```ts
+export const config = {
+  usingComponents: { 'van-button': '@vant/weapp/button/index' },
+}
+```
+
+**限制：** 以这种方式注册的标签会按原生标签发射，因此 `onTap` 编译为
+`bindtap`，而不是组件事件 `bind:click`。组件自定义事件目前不会触发。原生事件
+和属性可以正常使用。
+
 ## Workers
 
 在 `app.mist` 的 `config` 中设置 `workers: "workers"` 以启用微信 worker 线程，并把普通 JS 文件放在 `src/workers/**` 下。在项目目录的每次构建中（平铺单文件构建除外），mistc 把该目录原样镜像到 `dist/workers/**`——不编译，不校验 JS。已删除的源文件（以及清空的子目录）在重建时从 `dist` 中清理。

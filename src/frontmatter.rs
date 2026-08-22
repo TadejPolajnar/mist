@@ -1029,7 +1029,7 @@ pub fn analyze_with_stores_bound(
             {
                 let (line, col) = line_col(src, mutation.start as usize, line_offset);
                 return Err(format!(
-                    "M1030 at line {}:{}: state write inside a function() callback — `this` is rebound there, so the write cannot reach page state\n  help: use an arrow function (success: (res) => {{ ... }}) — arrows keep the page's `this`",
+                    "M1030 at line {}:{}: state write inside a function() callback — `this` is rebound there, so the write cannot reach page state\n  help: make every enclosing function an arrow (success: (res) => {{ ... }}) — an arrow nested inside a function() does not recover the page's `this`",
                     line, col
                 ));
             }

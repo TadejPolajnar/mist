@@ -173,7 +173,9 @@ onCreate(() => { console.log(n.value) }) // ✓ 读取没有问题
   时**——mistc 会自动注册这些导入，且不会把它们与手动条目合并。
 
 **没有**导入任何 `.mist` 组件的手动 `usingComponents` 仍然可用——这是
-手动注册 mistc 无法自行发现的原生/第三方组件的受支持方式。
+手动注册 mistc 无法自行发现的原生/第三方组件的受支持方式。注册不等于解析：
+`@vant/weapp/button/index` 这类裸模块名还需要把对应的包放在
+`src/miniprogram_npm/` 下（参见 docs/language.md §第三方组件）。
 
 ## M1015 — 无效的插件说明符或插件组件
 
@@ -491,3 +493,17 @@ wx.request({
 ```
 
 请使用箭头函数。handler 内嵌套的 `function` 声明同样适用。
+
+每一层外层函数都必须是箭头函数。嵌套在 `function` 内部的箭头函数无法恢复
+页面的 `this` —— 它继承的是已被重新绑定的 `this`：
+
+```ts
+wx.request({
+  success: function (res) {
+    const apply = () => { items.value = res.data }   // ✗ 仍然是 M1030
+    apply()
+  },
+})
+```
+
+请把外层的 `function (res)` 也改成箭头函数。

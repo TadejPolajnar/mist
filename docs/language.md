@@ -610,6 +610,28 @@ example `tabBar.list[].iconPath: "assets/tab-home.png"`. Hidden files (names
 starting with `.`) are skipped. Removed source files are pruned from `dist`
 on rebuild. Symlinks inside `assets/` are skipped.
 
+## Third-party components (`miniprogram_npm`)
+
+WeChat resolves bare `usingComponents` specifiers against a `miniprogram_npm`
+directory under `miniprogramRoot`, so mistc copies `src/miniprogram_npm/**`
+verbatim to `dist/miniprogram_npm/**` on every build of a project directory
+(not for flat single-file builds). Removed source files are pruned from `dist`
+on rebuild, and symlinks are skipped — the same rules as `assets/`.
+
+mistc does not run WeChat's 构建 npm step. Generate the directory first (the
+DevTools *Build npm* command, or `miniprogram-ci`'s `packNpm`), then place the
+result at `src/miniprogram_npm/` and register the component by hand:
+
+```ts
+export const config = {
+  usingComponents: { 'van-button': '@vant/weapp/button/index' },
+}
+```
+
+**Limitation:** a tag registered this way is emitted as a native tag, so
+`onTap` compiles to `bindtap`, not to the component event `bind:click`.
+Component-specific events do not fire yet. Native events and attributes work.
+
 ## Workers
 
 Set `workers: "workers"` in `app.mist`'s `config` to enable a WeChat worker

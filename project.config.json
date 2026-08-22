@@ -5,6 +5,7 @@
   "compileType": "miniprogram",
   "setting": {
     "es6": true,
-    "urlCheck": false
+    "urlCheck": false,
+    "minifyWXML": true
   }
 }

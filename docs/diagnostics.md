@@ -182,7 +182,10 @@ collision instead:
 
 A manual `usingComponents` with **no** `.mist` component imports still
 works — it is the supported way to hand-register native/third-party
-components mistc cannot discover on its own.
+components mistc cannot discover on its own. Registration is not
+resolution: a bare specifier such as `@vant/weapp/button/index` also needs
+the package under `src/miniprogram_npm/` (see docs/language.md
+§Third-party components).
 
 ## M1015 — invalid plugin specifier or component
 
@@ -523,3 +526,17 @@ wx.request({
 
 Use an arrow function. This also applies to nested `function` declarations
 inside handlers.
+
+Every enclosing function must be an arrow. An arrow nested inside a
+`function` does not recover the page's `this` — it inherits the rebound one:
+
+```ts
+wx.request({
+  success: function (res) {
+    const apply = () => { items.value = res.data }   // ✗ still M1030
+    apply()
+  },
+})
+```
+
+Make the outer `function (res)` an arrow as well.

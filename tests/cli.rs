@@ -699,7 +699,7 @@ fn upload_requires_key() {
 
     let config_path = root.join("project.config.json");
     let config = std::fs::read_to_string(&config_path).unwrap();
-    let config = config.replace("touristappid", "wxabc1234567890def");
+    let config = config.replace("touristappid", "wx-test-not-a-real-appid");
     std::fs::write(&config_path, config).unwrap();
 
     let out = Command::new(bin())

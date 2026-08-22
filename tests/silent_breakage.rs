@@ -10,7 +10,18 @@ fn state_write_in_method_shorthand_callback_is_m1030() {
         Ok(_) => panic!("expected a compile error"),
     };
     assert!(err.contains("M1030"), "err: {}", err);
-    assert!(err.contains("arrow function"), "err: {}", err);
+    assert!(err.contains("arrow"), "err: {}", err);
+}
+
+#[test]
+fn m1030_help_covers_arrows_nested_in_a_function() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nfunction go() { wx.request({ success: function (r) { const f = () => { n.value = r.d }; f() } }) }\n---\n<span onTap={go}>{n.value}</span>\n";
+    let err = match mistc::compile_unit(src, true) {
+        Err(e) => e,
+        Ok(_) => panic!("expected a compile error"),
+    };
+    assert!(err.contains("M1030"), "err: {}", err);
+    assert!(err.contains("every enclosing function"), "err: {}", err);
 }
 
 #[test]
