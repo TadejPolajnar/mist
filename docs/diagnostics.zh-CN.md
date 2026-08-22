@@ -114,7 +114,7 @@ count.value++      // ✓
 中间层循环变量。请改为在 frontmatter 中预先计算——例如用一个派生把
 嵌套项映射为可直接展示的值。
 
-## M1010 — 模板语法错误
+## M1010 —— 模板语法错误
 
 标签不匹配/未闭合以及格式错误的属性名——报告文件行号。常见原因：自闭合
 的原生标签没有写 `/>`。
@@ -476,3 +476,18 @@ export const config = { sizeBudget: '1.5MB' }   // 或 '800KB'
 统计的是生成文件的字节数之和；微信度量的是上传后的包，因此数字接近但
 不精确到字节——这也是它只是警告级的原因。修复方式：把页面移入
 `src/packages/` 分包、精简 npm vendor 体积，或压缩 `assets/`。
+
+## M1030 —— 在 function() 回调中写状态
+
+非箭头函数（`function` 表达式、`success(res) { ... }` 这类方法简写）会
+重新绑定 `this`，编译后的写入无法到达页面状态：
+
+```ts
+wx.request({
+  url: '/api',
+  success(res) { items.value = res.data },      // ✗ M1030 —— 这里的 `this` 是 options 对象
+  // success: (res) => { items.value = res.data }  ✓ 箭头函数保留页面的 `this`
+})
+```
+
+请使用箭头函数。handler 内嵌套的 `function` 声明同样适用。

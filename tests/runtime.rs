@@ -753,3 +753,27 @@ setTimeout(() => {
     );
     assert_eq!(out, "OK");
 }
+
+#[test]
+fn writes_apply_eagerly_for_read_after_write() {
+    let out = run_node(
+        r#"
+const page = {
+  data: { count: 0, todos: [{ id: 1 }] },
+  setData(o) {},
+  __derive() { return {}; },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('count', page.data.count + 1);
+if (page.data.count !== 1) throw new Error('scalar stale: ' + page.data.count);
+page.__set('todos[' + page.data.todos.length + ']', { id: 2 });
+if (page.data.todos.length !== 2) throw new Error('push stale: ' + page.data.todos.length);
+setTimeout(() => {
+  if (page.data.count !== 1 || page.data.todos.length !== 2) throw new Error('flush changed values');
+  console.log('OK');
+}, 0);
+"#,
+    );
+    assert_eq!(out, "OK");
+}

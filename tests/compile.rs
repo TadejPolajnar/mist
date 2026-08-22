@@ -1412,3 +1412,15 @@ fn destructured_module_lets_are_impure_too() {
     let out = mistc::compile(src).expect("compile failed");
     assert!(out.js.contains("'a', null, () => this.calc(this._n), null)"), "js:\n{}", out.js);
 }
+
+#[test]
+fn const_arrow_handlers_become_methods() {
+    let src = "---\nimport { state } from 'mist'\nconst n = state(0)\nconst bump = () => { n.value++ }\nconst dbl = (v) => v * 2\nconst tag = async v => v\n---\n<span onTap={bump}>{dbl(n.value)}</span>\n";
+    let out = mistc::compile(src).expect("compile failed");
+    assert!(out.js.contains("bump() {"), "js:\n{}", out.js);
+    assert!(out.js.contains("this.__set('n', this.data.n + 1)"), "js:\n{}", out.js);
+    assert!(out.js.contains("dbl(v) { return v * 2; }"), "js:\n{}", out.js);
+    assert!(out.js.contains("async tag(v) { return v; }"), "js:\n{}", out.js);
+    assert!(out.wxml.contains("bindtap=\"bump\""), "wxml:\n{}", out.wxml);
+    assert!(!out.js.contains("const bump"), "arrow leaked to module scope:\n{}", out.js);
+}

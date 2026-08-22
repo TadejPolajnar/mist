@@ -61,6 +61,11 @@ does nothing. Consts the template never references stay plain JS and never
 enter `data`.
 
 **Rules the compiler enforces:** mutate only through `x.value...` paths.
+A state write inside a non-arrow callback (`success(res) { ... }`) is an
+M1030 error — those rebind `this`; use an arrow. Handlers may be `function`
+declarations or top-level `const name = (...) => {...}` arrows — both become
+page methods. Writes apply immediately: reading `x.value` right after
+writing it sees the new value (`setData` still batches once per handler).
 Using a reactive name without `.value` is an M1007 error. Aliasing into a
 local and writing through it (`const t = todos.value[0]; t.done = true`) — or
 mutating through a `for...of` variable or `forEach` callback param — is an
@@ -80,7 +85,9 @@ Web-familiar tags map to native ones; native tags pass through untouched:
 | `a href="/pages/x/x"` | `navigator url="…"` |
 | `button input scroll-view swiper …` | passthrough |
 
-**Bindings** — `{expr}` → `{{expr}}` with `.value` stripped. Member access,
+**Bindings** — `{expr}` → `{{expr}}` with `.value` stripped. A braced run
+of text that does not parse as an expression (`{ return v }`, a code
+snippet, a WXS body) stays literal text instead of becoming a binding. Member access,
 arithmetic, comparisons, ternaries, `&&`/`||`, string concat run inline in WXML.
 **Anything WXML can't evaluate is hoisted automatically** — function calls
 (including `Math.*` and calls with non-reactive arguments), template literals,

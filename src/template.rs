@@ -428,10 +428,18 @@ impl Parser {
                     nodes.push(self.parse_element()?);
                 }
                 Some('{') => {
-                    flush_text(&mut text, &mut nodes);
                     let line = self.line();
+                    let start = self.pos;
                     let inner = self.read_braced()?;
-                    nodes.push(classify_expr(&inner, line)?);
+                    match classify_expr(&inner, line)? {
+                        Node::Text(_) => {
+                            text.extend(&self.chars[start..self.pos]);
+                        }
+                        node => {
+                            flush_text(&mut text, &mut nodes);
+                            nodes.push(node);
+                        }
+                    }
                 }
                 Some(c) => {
                     text.push(c);
@@ -611,7 +619,19 @@ fn classify_expr(inner: &str, line: usize) -> Result<Node, String> {
     if let Some(node) = try_parse_logical_and(inner)? {
         return Ok(node);
     }
+    if !parses_as_expression(inner) {
+        return Ok(Node::Text(format!("{{{}}}", inner)));
+    }
     Ok(Node::Expr(inner.to_string()))
+}
+
+fn parses_as_expression(inner: &str) -> bool {
+    use oxc_parser::Parser;
+    use oxc_span::SourceType;
+    let allocator = oxc_allocator::Allocator::default();
+    let wrapped = format!("({})", inner);
+    let ret = Parser::new(&allocator, &wrapped, SourceType::default().with_typescript(true)).parse();
+    ret.errors.is_empty() && ret.program.body.len() == 1
 }
 
 fn strip_parens(s: &str) -> &str {

@@ -18,6 +18,7 @@ page.__pending = {};
 Promise.resolve().then(() => flush(page));
 }
 markDirty(page, rootOf(path));
+(page.__undoPaths || (page.__undoPaths = [])).push(applyPathCapture(page.data, path, value));
 page.__pending[path] = value;
 }
 let budget = 900 * 1024;
@@ -90,10 +91,8 @@ function flush(page) {
 const pending = page.__pending;
 page.__pending = null;
 if (!pending) return;
-const undoPaths = [];
-for (const path in pending) {
-undoPaths.push(applyPathCapture(page.data, path, pending[path]));
-}
+const undoPaths = page.__undoPaths || [];
+page.__undoPaths = null;
 page.__undo = [];
 Object.assign(pending, page.__derive());
 const undo = page.__undo;

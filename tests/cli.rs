@@ -156,7 +156,7 @@ module.exports = async () => {
   await flush();
   assert.equal(c.data().hits, 1);
   assert.equal(c.events[0].name, 'pick');
-  assert.deepEqual(c.events[0].detail.args, [0]);
+  assert.deepEqual(c.events[0].detail.args, [1]);
   c.setProp('label', 'yo');
   await flush();
   assert.equal(c.data().label, 'yo');

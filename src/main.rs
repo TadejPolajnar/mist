@@ -742,6 +742,8 @@ fn run_build_opt(input: &Path, outdir: &Path, emit_app: bool, quiet: bool) -> bo
 
         copy_dir_verbatim(&input.join("workers"), outdir, "workers", &mut written);
 
+        copy_dir_verbatim(&input.join("miniprogram_npm"), outdir, "miniprogram_npm", &mut written);
+
         write_routes_dts(input, files);
     } else {
         let theme_root = input.parent().unwrap_or_else(|| Path::new("."));

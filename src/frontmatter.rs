@@ -538,7 +538,7 @@ pub fn analyze_with_stores_bound(
     let mut states: Vec<StateDecl> = Vec::new();
     let mut state_init_spans: Vec<Option<Span>> = Vec::new();
     let mut deriveds: Vec<(String, Span)> = Vec::new();
-    let mut raw_methods: Vec<(String, Span, Span, bool)> = Vec::new(); // name, params-ish span gap, body span
+    let mut raw_methods: Vec<(String, Span, Span, bool, bool)> = Vec::new(); // name, params span, body span, async, expr-body
     let mut raw_lifecycles: Vec<(String, Span, Span, bool, bool, u32)> = Vec::new();
     let mut config: Option<String> = None;
     let mut inline_flag: Option<bool> = None;
@@ -813,6 +813,21 @@ pub fn analyze_with_stores_bound(
                     }
                 }
                 if !handled {
+                    if matches!(var.kind, VariableDeclarationKind::Const) && var.declarations.len() == 1 {
+                        let decl = &var.declarations[0];
+                        if let (BindingPatternKind::BindingIdentifier(id), Some(Expression::ArrowFunctionExpression(arrow))) =
+                            (&decl.id.kind, decl.init.as_ref().map(unparenthesize))
+                        {
+                            raw_methods.push((
+                                id.name.to_string(),
+                                arrow.params.span,
+                                arrow.body.span,
+                                arrow.r#async,
+                                arrow.expression,
+                            ));
+                            continue;
+                        }
+                    }
                     for decl in &var.declarations {
                         if let BindingPatternKind::BindingIdentifier(id) = &decl.id.kind {
                             plain_consts.push(id.name.to_string());
@@ -832,7 +847,7 @@ pub fn analyze_with_stores_bound(
                     .ok_or("anonymous top-level function")?;
                 let body = func.body.as_ref().ok_or("function without body")?;
                 let params_gap = Span::new(func.id.as_ref().unwrap().span.end, body.span.start);
-                raw_methods.push((name, params_gap, body.span, func.r#async));
+                raw_methods.push((name, params_gap, body.span, func.r#async, false));
             }
             Statement::ExpressionStatement(expr_stmt) => {
                 if let Expression::CallExpression(call) = unparenthesize(&expr_stmt.expression) {
@@ -1001,6 +1016,26 @@ pub fn analyze_with_stores_bound(
         collector.edits.extend(raw_pass.edits);
     }
 
+    {
+        let mut fn_spans = FnBodySpans { spans: Vec::new() };
+        fn_spans.visit_program(&program);
+        let method_bodies: Vec<Span> = raw_methods.iter().map(|(_, _, b, _, _)| *b).collect();
+        for span in &fn_spans.spans {
+            if method_bodies.contains(span) {
+                continue;
+            }
+            if let Some(mutation) =
+                collector.edits.iter().find(|e| e.start >= span.start && e.end <= span.end)
+            {
+                let (line, col) = line_col(src, mutation.start as usize, line_offset);
+                return Err(format!(
+                    "M1030 at line {}:{}: state write inside a function() callback — `this` is rebound there, so the write cannot reach page state\n  help: use an arrow function (success: (res) => {{ ... }}) — arrows keep the page's `this`",
+                    line, col
+                ));
+            }
+        }
+    }
+
     // M1017: `created` runs before `properties`/`data` exist on the instance —
     // any state write in onCreate's callback would target an object that isn't there yet.
     for (hook, _, body_span, ..) in &raw_lifecycles {
@@ -1035,11 +1070,12 @@ pub fn analyze_with_stores_bound(
 
     let methods = raw_methods
         .into_iter()
-        .map(|(name, params_gap, body_span, is_async)| Method {
-            name,
-            params: text(src, params_gap).trim().to_string(),
-            body: rewriter.transform(src, body_span, &edits),
-            is_async,
+        .map(|(name, params_gap, body_span, is_async, expr_body)| {
+            let params = text(src, params_gap).trim().to_string();
+            let params = if params.starts_with('(') { params } else { format!("({})", params) };
+            let body = rewriter.transform(src, body_span, &edits);
+            let body = if expr_body { format!("{{ return {}; }}", body) } else { body };
+            Method { name, params, body, is_async }
         })
         .collect();
 
@@ -3346,6 +3382,19 @@ impl<'a> Visit<'a> for AliasScan<'_> {
             self.shorthand_starts.insert(it.value.span().start);
         }
         walk::walk_object_property(self, it);
+    }
+}
+
+struct FnBodySpans {
+    spans: Vec<Span>,
+}
+
+impl<'a> Visit<'a> for FnBodySpans {
+    fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+        if let Some(body) = &it.body {
+            self.spans.push(body.span);
+        }
+        walk::walk_function(self, it, flags);
     }
 }
 

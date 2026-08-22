@@ -506,3 +506,20 @@ The count sums the emitted files; WeChat measures the uploaded package, so
 the numbers are close but not byte-exact — which is why this is
 warning-tier. Fix by moving pages into `src/packages/` subpackages,
 trimming npm vendor weight, or shrinking `assets/`.
+
+## M1030 — state write inside a function() callback
+
+Non-arrow functions (`function` expressions, method shorthand like
+`success(res) { ... }`) rebind `this`, so the compiled write cannot reach
+page state:
+
+```ts
+wx.request({
+  url: '/api',
+  success(res) { items.value = res.data },      // ✗ M1030 — `this` is the options object
+  // success: (res) => { items.value = res.data }  ✓ arrows keep the page's `this`
+})
+```
+
+Use an arrow function. This also applies to nested `function` declarations
+inside handlers.

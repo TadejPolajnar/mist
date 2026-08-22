@@ -165,7 +165,7 @@ fn typed_props_property_name_set_is_unchanged_by_typing() {
 }
 
 #[test]
-fn callback_event_options_emit_third_triggerEvent_arg() {
+fn callback_event_options_emit_third_trigger_event_arg() {
     let src = "---\nimport { props } from 'mist'\nexport const config = { events: { onToggle: { bubbles: true } } }\nconst { onToggle } = props()\n---\n<span onTap={() => onToggle()}>hi</span>\n";
     let unit = mistc::compile_unit(src, false).expect("compile failed");
     let js = &unit.output.js;
