@@ -69,9 +69,18 @@ mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
 mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
 mistc test [dir] --snapshots [--update] [--filter <substring>]
+mistc upload [dir] [--preview] --key <path> [--version <ver>] [--desc <text>] [--appid <id>]
 ```
 
 - **`init`** → 生成 `<name>/`（app.mist、一个待办页面、一个示例测试、project.config.json、`mist.d.ts` + `tsconfig.json` + `package.json`，用于编辑器类型提示）。
+- **`upload`** → 通过 `miniprogram-ci` 把 `<dir>` 的构建产物（取自
+  `project.config.json` 的 `miniprogramRoot`，默认 `dist/`）上传到微信。
+  `--preview` 会把二维码写到 `<dir>/preview.png`；不带此参数则上传体验版
+  /正式版候选（需要 `--version`，`--desc` 可选）。密钥始终是文件路径——
+  `--key <path>` 或 `MISTC_UPLOAD_KEY`——从微信公众平台后台下载
+  （mp.weixin.qq.com → 开发管理 → 开发设置 → 小程序代码上传）；不要直接
+  传入密钥内容。上传还需要在后台把 CI 机器的 IP 加入白名单，或关闭 IP
+  白名单。
 - **`--watch`** → 每次保存 `.mist`/`.ts` 即重编译（带防抖）。
 - **`test`** → 把 `<dir>/src` 编译到临时目录，并在 Node 测试环境中运行每个 `<dir>/tests/*.test.js`（`bootPage`、`flush`、`setData` payload 记录器、`wx` 桩）。见 [testing.zh-CN.md](testing.zh-CN.md)。需要 Node；任何文件失败则以非零退出码结束。
 

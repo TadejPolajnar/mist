@@ -130,3 +130,30 @@ mistc test --update        # 接受当前输出为新的基准
 有意的产物变化（升级 `mistc`、修改模板）按设计会产生漂移——这正是它的
 意义。在 CI 中把 `--snapshots` 与 `mistc test` 并排运行；两者合起来
 覆盖行为与输出。
+
+## CI
+
+一条构建、测试、检查快照、最后通过 `mistc upload` 把体验版发布到微信的
+流水线（参见 [api.zh-CN.md](api.zh-CN.md)）：
+
+```yaml
+jobs:
+  ship-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install -g mist-lang
+      - run: mistc build src
+      - run: mistc test
+      - run: mistc test --snapshots
+      - name: Write upload key
+        run: printf '%s' "$UPLOAD_KEY" > /tmp/upload-key.pem
+        env:
+          UPLOAD_KEY: ${{ secrets.WECHAT_UPLOAD_KEY }}
+      - run: mistc upload --preview --key /tmp/upload-key.pem
+```
+
+用 `printf` 写入密钥，避免它出现在 shell 跟踪日志（`set -x`）中。
+`mistc upload` 本身也绝不会记录或回显密钥文件内容。

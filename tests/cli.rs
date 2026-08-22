@@ -643,3 +643,73 @@ fn build_reports_sizes_and_m1029_over_budget() {
     assert!(out.status.success(), "over-budget is warning-tier, not an error");
     assert!(stderr.contains("M1029") && stderr.contains("config.sizeBudget"), "stderr:\n{}", stderr);
 }
+
+#[test]
+fn upload_requires_build_output() {
+    let dir = std::env::temp_dir().join("mist-cli-upload-no-dist");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    let root = dir.join("app");
+
+    let out = Command::new(bin()).args(["upload", "--preview"]).current_dir(&root).output().unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("run mistc build"), "stderr:\n{}", stderr);
+}
+
+#[test]
+fn upload_rejects_tourist_appid() {
+    let dir = std::env::temp_dir().join("mist-cli-upload-tourist");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    let root = dir.join("app");
+
+    let out = Command::new(bin()).args(["build", "src", "-o", "dist"]).current_dir(&root).output().unwrap();
+    assert!(out.status.success(), "build failed: {}", String::from_utf8_lossy(&out.stderr));
+
+    let key = std::env::temp_dir().join("mist-cli-upload-tourist-key.pem");
+    std::fs::write(&key, "not a real key").unwrap();
+
+    let out = Command::new(bin())
+        .args(["upload", "--preview", "--key"])
+        .arg(&key)
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("tourist appid"), "stderr:\n{}", stderr);
+}
+
+#[test]
+fn upload_requires_key() {
+    let dir = std::env::temp_dir().join("mist-cli-upload-no-key");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(bin()).arg("init").arg("app").current_dir(&dir).output().unwrap();
+    assert!(out.status.success(), "init failed: {}", String::from_utf8_lossy(&out.stderr));
+    let root = dir.join("app");
+
+    let out = Command::new(bin()).args(["build", "src", "-o", "dist"]).current_dir(&root).output().unwrap();
+    assert!(out.status.success(), "build failed: {}", String::from_utf8_lossy(&out.stderr));
+
+    let config_path = root.join("project.config.json");
+    let config = std::fs::read_to_string(&config_path).unwrap();
+    let config = config.replace("touristappid", "wxabc1234567890def");
+    std::fs::write(&config_path, config).unwrap();
+
+    let out = Command::new(bin())
+        .args(["upload", "--preview"])
+        .current_dir(&root)
+        .env_remove("MISTC_UPLOAD_KEY")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--key"), "stderr:\n{}", stderr);
+    assert!(stderr.contains("MISTC_UPLOAD_KEY"), "stderr:\n{}", stderr);
+}

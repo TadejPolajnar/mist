@@ -92,12 +92,21 @@ mistc init <name>
 mistc build <src-dir | entry.mist> [-o <outdir>] [--app] [--watch]
 mistc test [dir] [--filter <substring>] [--timeout <secs>] [--watch]
 mistc test [dir] --snapshots [--update] [--filter <substring>]
+mistc upload [dir] [--preview] --key <path> [--version <ver>] [--desc <text>] [--appid <id>]
 ```
 
 - **`init`** → scaffolds `<name>/` (app.mist, a todo page, a sample test,
   project.config.json, `mist.d.ts` + `tsconfig.json` + `package.json` for
   editor types).
 - **`--watch`** → rebuilds on every `.mist`/`.ts` save (debounced).
+- **`upload`** → ships `<dir>`'s built output (`miniprogramRoot` from
+  `project.config.json`, default `dist/`) to WeChat via `miniprogram-ci`.
+  `--preview` writes a QR code to `<dir>/preview.png`; without it, uploads a
+  release candidate (`--version` required, `--desc` optional). The key is
+  always a file path — `--key <path>` or `MISTC_UPLOAD_KEY` — downloaded
+  from the WeChat admin console (mp.weixin.qq.com → 开发管理 → 开发设置 →
+  小程序代码上传); never pass key contents directly. Uploads also need the
+  CI machine's IP allowlisted there, or the IP allowlist disabled.
 - **`test`** → compiles `<dir>/src` to a temp dir and runs each
   `<dir>/tests/*.test.js` in a Node harness (`bootPage`, `flush`, `setData`
   payload recorder, `wx` stub). See [testing.md](testing.md). Requires Node;

@@ -41,13 +41,13 @@ fn esbuild_cache_dir() -> PathBuf {
     }
 }
 
-pub(crate) fn home_dir() -> Option<std::ffi::OsString> {
+pub fn home_dir() -> Option<std::ffi::OsString> {
     std::env::var_os("HOME")
         .filter(|h| !h.is_empty())
         .or_else(|| std::env::var_os("USERPROFILE").filter(|h| !h.is_empty()))
 }
 
-pub(crate) fn tool_command(tool: &str) -> Command {
+pub fn tool_command(tool: &str) -> Command {
     if cfg!(windows) {
         let mut c = Command::new("cmd");
         c.args(["/C", tool]);

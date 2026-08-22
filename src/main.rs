@@ -54,6 +54,21 @@ enum Command {
         #[arg(long, help = "Rewrite the snapshots/ goldens to match current output (implies --snapshots)")]
         update: bool,
     },
+    #[command(about = "Upload dist/ to WeChat via miniprogram-ci (preview or release)")]
+    Upload {
+        #[arg(default_value = ".", help = "Project root containing project.config.json and dist/")]
+        dir: PathBuf,
+        #[arg(long, help = "Generate a preview QR code instead of uploading a release candidate")]
+        preview: bool,
+        #[arg(long, help = "Private key file from the WeChat admin console (or MISTC_UPLOAD_KEY)")]
+        key: Option<PathBuf>,
+        #[arg(long, help = "Release version, e.g. 1.2.0 (required unless --preview)")]
+        version: Option<String>,
+        #[arg(long, help = "Release description")]
+        desc: Option<String>,
+        #[arg(long, help = "Override the appid from project.config.json")]
+        appid: Option<String>,
+    },
 }
 
 fn main() {
@@ -92,6 +107,16 @@ fn main() {
                 test_watch_loop(&dir, filter.as_deref(), timeout);
             }
             match run_tests(&dir, filter.as_deref(), timeout) {
+                Ok(true) => {}
+                Ok(false) => exit(1),
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    exit(1);
+                }
+            }
+        }
+        Command::Upload { dir, preview, key, version, desc, appid } => {
+            match run_upload(&dir, preview, key.as_deref(), version.as_deref(), desc.as_deref(), appid.as_deref()) {
                 Ok(true) => {}
                 Ok(false) => exit(1),
                 Err(e) => {
@@ -406,6 +431,173 @@ fn run_tests(dir: &Path, filter: Option<&str>, timeout_secs: u64) -> Result<bool
     let _ = fs::remove_dir_all(&out);
     println!("{} passed, {} failed", test_files.len() - failed, failed);
     Ok(failed == 0)
+}
+
+fn config_string_field(config: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\"", key);
+    let idx = config.find(&needle)?;
+    let rest = &config[idx + needle.len()..];
+    let colon = rest.find(':')?;
+    let rest = &rest[colon + 1..];
+    let open = rest.find('"')? + 1;
+    let close = rest[open..].find('"')? + open;
+    Some(rest[open..close].to_string())
+}
+
+fn mpci_cache_dir() -> PathBuf {
+    match mistc::npm_bundle::home_dir() {
+        Some(home) => PathBuf::from(home).join(".cache").join("mistc").join("mpci"),
+        None => std::env::temp_dir().join("mistc-mpci"),
+    }
+}
+
+fn ensure_miniprogram_ci() -> Result<PathBuf, String> {
+    let dir = mpci_cache_dir();
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let pkg = dir.join("node_modules").join("miniprogram-ci");
+    if !pkg.exists() {
+        eprintln!("installing miniprogram-ci (first upload, needs network)…");
+        fs::write(dir.join("package.json"), "{ \"name\": \"mistc-mpci\", \"private\": true }")
+            .map_err(|e| e.to_string())?;
+        let out = mistc::npm_bundle::tool_command("npm")
+            .args(["install", "--no-audit", "--no-fund", "miniprogram-ci@^2"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("npm not available: {}", e))?;
+        if !out.status.success() {
+            return Err(format!(
+                "npm install miniprogram-ci failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+    }
+    Ok(pkg)
+}
+
+/// Never interpolates user-controlled strings into JS source — every value
+/// (appid, paths, version, desc) flows in through `MISTC_MPCI_*` env vars,
+/// including the private key path (never its contents).
+const MPCI_DRIVER_JS: &str = r#"
+const ci = require(process.env.MISTC_MPCI_PKG);
+
+async function main() {
+  const project = new ci.Project({
+    appid: process.env.MISTC_MPCI_APPID,
+    type: 'miniProgram',
+    projectPath: process.env.MISTC_MPCI_PROJECT_PATH,
+    privateKeyPath: process.env.MISTC_MPCI_KEY,
+  });
+
+  if (process.env.MISTC_MPCI_PREVIEW === '1') {
+    const dest = process.env.MISTC_MPCI_QRCODE_DEST;
+    await ci.preview({
+      project,
+      qrcodeFormat: 'image',
+      qrcodeOutputDest: dest,
+      setting: { es6: true, minify: true },
+    });
+    console.log(dest);
+  } else {
+    const version = process.env.MISTC_MPCI_VERSION;
+    const desc = process.env.MISTC_MPCI_DESC || '';
+    await ci.upload({
+      project,
+      version,
+      desc,
+      setting: { es6: true, minify: true },
+    });
+    console.log(version);
+  }
+}
+
+main().catch((err) => {
+  console.error(err && err.message ? err.message : String(err));
+  process.exit(1);
+});
+"#;
+
+#[allow(clippy::too_many_arguments)]
+fn run_upload(
+    dir: &Path,
+    preview: bool,
+    key: Option<&Path>,
+    version: Option<&str>,
+    desc: Option<&str>,
+    appid_override: Option<&str>,
+) -> Result<bool, String> {
+    let config_path = dir.join("project.config.json");
+    let config = fs::read_to_string(&config_path)
+        .map_err(|_| format!("{} not found — run `mistc init` or `mistc build` first", config_path.display()))?;
+    let appid = appid_override
+        .map(|a| a.to_string())
+        .or_else(|| config_string_field(&config, "appid"))
+        .ok_or_else(|| format!("{} has no \"appid\"", config_path.display()))?;
+    let root = config_string_field(&config, "miniprogramRoot").unwrap_or_else(|| "dist/".to_string());
+    let project_path = dir.join(root.trim_end_matches('/'));
+
+    if !project_path.join("app.json").is_file() {
+        return Err(format!("build first: {} has no app.json — run mistc build src", project_path.display()));
+    }
+    if appid == "touristappid" {
+        return Err("project.config.json still has the tourist appid — set your real AppID".to_string());
+    }
+    let key_env = std::env::var_os("MISTC_UPLOAD_KEY");
+    let key_path: PathBuf = match key.map(|p| p.to_path_buf()).or_else(|| key_env.clone().map(PathBuf::from)) {
+        Some(p) => p,
+        None => {
+            return Err(
+                "no upload key: pass --key <path> or set MISTC_UPLOAD_KEY to a private key file path \
+                 (download it from mp.weixin.qq.com → 开发管理 → 开发设置 → 小程序代码上传)"
+                    .to_string(),
+            )
+        }
+    };
+    if !key_path.is_file() {
+        return Err(format!(
+            "upload key not found at {} (from {}) — download it from mp.weixin.qq.com admin console",
+            key_path.display(),
+            if key.is_some() { "--key" } else { "MISTC_UPLOAD_KEY" }
+        ));
+    }
+    let version = if !preview {
+        match version {
+            Some(v) => Some(v.to_string()),
+            None => return Err("--version is required unless --preview".to_string()),
+        }
+    } else {
+        None
+    };
+    let desc = desc.unwrap_or("").to_string();
+
+    let pkg_dir = ensure_miniprogram_ci()?;
+    let scratch = std::env::temp_dir().join(format!("mist-upload-{}", std::process::id()));
+    fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
+    let driver = scratch.join(".mist-upload-driver.js");
+    fs::write(&driver, MPCI_DRIVER_JS).map_err(|e| e.to_string())?;
+
+    let qrcode_dest = dir.join("preview.png");
+    let mut cmd = std::process::Command::new("node");
+    cmd.arg(&driver)
+        .env("MISTC_MPCI_PKG", pkg_dir.as_os_str())
+        .env("MISTC_MPCI_APPID", &appid)
+        .env("MISTC_MPCI_PROJECT_PATH", &project_path)
+        .env("MISTC_MPCI_KEY", &key_path)
+        .env("MISTC_MPCI_PREVIEW", if preview { "1" } else { "0" })
+        .env("MISTC_MPCI_QRCODE_DEST", &qrcode_dest)
+        .env("MISTC_MPCI_DESC", &desc);
+    if let Some(v) = &version {
+        cmd.env("MISTC_MPCI_VERSION", v);
+    }
+    let out = cmd.output().map_err(|e| format!("node is required for `mistc upload` but was not found: {}", e))?;
+    let _ = fs::remove_dir_all(&scratch);
+    if out.status.success() {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        print!("{}", stdout);
+        Ok(true)
+    } else {
+        eprint!("{}", String::from_utf8_lossy(&out.stderr));
+        Ok(false)
+    }
 }
 
 /// CSS strings cannot contain raw newlines, so line-leading whitespace and

@@ -134,3 +134,30 @@ does not combine with `--snapshots`.
 Intentional codegen changes (upgrading `mistc`, editing templates) will
 drift by design — that is the point. Run `--snapshots` in CI next to
 `mistc test`; the pair covers behavior and output.
+
+## CI
+
+A pipeline that builds, tests, checks snapshots, then ships a preview to
+WeChat via `mistc upload` (see [api.md](api.md)):
+
+```yaml
+jobs:
+  ship-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install -g mist-lang
+      - run: mistc build src
+      - run: mistc test
+      - run: mistc test --snapshots
+      - name: Write upload key
+        run: printf '%s' "$UPLOAD_KEY" > /tmp/upload-key.pem
+        env:
+          UPLOAD_KEY: ${{ secrets.WECHAT_UPLOAD_KEY }}
+      - run: mistc upload --preview --key /tmp/upload-key.pem
+```
+
+`printf` writes the key without ever putting it in shell trace logs
+(`set -x`). The key file itself is never logged or echoed by `mistc upload`.
