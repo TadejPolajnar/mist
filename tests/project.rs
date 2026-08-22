@@ -1484,3 +1484,66 @@ fn size_budget_rejects_bad_literals() {
         assert!(err.contains(expect), "{}: err: {}", bad, err);
     }
 }
+
+#[test]
+fn project_build_reports_all_failing_pages() {
+    let dir = std::env::temp_dir().join("mist-project-multi-error");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nconst n = state(0)\n---\n<span>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/bad-mutate.mist"),
+        "---\nimport { state } from 'mist'\nconst xs = state([])\nfunction rm(i) {\n  xs.value.splice(i, 1)\n}\n---\n<span>{xs.value.length}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/bad-bare.mist"),
+        "---\nimport { state } from 'mist'\nconst count = state(0)\nfunction inc() {\n  count++\n}\n---\n<span>{count.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("M1004"), "err: {}", err);
+    assert!(err.contains("M1007"), "err: {}", err);
+    assert!(err.contains("bad-mutate.mist"), "err: {}", err);
+    assert!(err.contains("bad-bare.mist"), "err: {}", err);
+}
+
+#[test]
+fn broken_shared_component_errors_once() {
+    let dir = std::env::temp_dir().join("mist-project-shared-broken-component");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("components")).unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport Item from '../components/Item.mist'\n---\n<Item />\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/about.mist"),
+        "---\nimport Item from '../components/Item.mist'\n---\n<Item />\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("components/Item.mist"),
+        "---\nimport { state } from 'mist'\nconst count = state(0)\nfunction inc() {\n  count++\n}\n---\n<span>{count.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert_eq!(err.matches("M1007").count(), 1, "err: {}", err);
+    assert!(err.contains("Item.mist"), "err: {}", err);
+}

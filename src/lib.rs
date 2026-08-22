@@ -770,8 +770,11 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
         app_pre.map(|a| a.trusted_packages).unwrap_or_default();
     ctx.theme = std::fs::read_to_string(src.join("theme.css")).ok();
     warn_dropped_mist_subdirs(&pages_entries, "pages", &mut ctx);
+    let mut unit_errors: Vec<String> = Vec::new();
     for page in &page_paths {
-        compile_rec(page, UnitKind::Page, DEFAULT_DEPTH, None, &mut ctx)?;
+        if let Err(e) = compile_rec(page, UnitKind::Page, DEFAULT_DEPTH, None, &mut ctx) {
+            unit_errors.push(e);
+        }
     }
     for (path, page_name, param) in discover_route_param_pages(&pages_entries, "pages")? {
         if page_paths.iter().any(|p| p.file_stem().is_some_and(|s| s == page_name.as_str())) {
@@ -781,7 +784,7 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
                 param = param
             ));
         }
-        compile_rec_at(
+        if let Err(e) = compile_rec_at(
             &path,
             UnitKind::Page,
             DEFAULT_DEPTH,
@@ -789,7 +792,9 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
             None,
             Some((&page_name, &param)),
             &mut ctx,
-        )?;
+        ) {
+            unit_errors.push(e);
+        }
     }
 
     let packages_dir = src.join("packages");
@@ -818,7 +823,9 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
                 &mut ctx,
             );
             for page in &pkg_page_paths {
-                compile_rec(page, UnitKind::Page, SUBPKG_DEPTH, Some(&pkg), &mut ctx)?;
+                if let Err(e) = compile_rec(page, UnitKind::Page, SUBPKG_DEPTH, Some(&pkg), &mut ctx) {
+                    unit_errors.push(e);
+                }
             }
             for (path, page_name, param) in
                 discover_route_param_pages(&pkg_pages_entries, &format!("packages/{}/pages", pkg))?
@@ -834,7 +841,7 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
                         param = param
                     ));
                 }
-                compile_rec_at(
+                if let Err(e) = compile_rec_at(
                     &path,
                     UnitKind::Page,
                     SUBPKG_DEPTH,
@@ -842,7 +849,9 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
                     None,
                     Some((&page_name, &param)),
                     &mut ctx,
-                )?;
+                ) {
+                    unit_errors.push(e);
+                }
             }
         }
     }
@@ -903,7 +912,7 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
     let custom_tab_bar_path = src.join("custom-tab-bar.mist");
     let custom_tab_bar_exists = custom_tab_bar_path.is_file();
     if custom_tab_bar_exists {
-        compile_rec_at(
+        if let Err(e) = compile_rec_at(
             &custom_tab_bar_path,
             UnitKind::Component,
             CUSTOM_TAB_BAR_DEPTH,
@@ -911,7 +920,15 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
             Some("custom-tab-bar/index"),
             None,
             &mut ctx,
-        )?;
+        ) {
+            unit_errors.push(e);
+        }
+    }
+
+    let mut dedup = std::collections::HashSet::new();
+    unit_errors.retain(|e| dedup.insert(e.clone()));
+    if !unit_errors.is_empty() {
+        return Err(unit_errors.join("\n\n"));
     }
 
     let app = compile_app(&app_source, &mut ctx, custom_tab_bar_exists)?;
