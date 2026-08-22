@@ -141,6 +141,7 @@ A pipeline that builds, tests, checks snapshots, then ships a preview to
 WeChat via `mistc upload` (see [api.md](api.md)):
 
 ```yaml
+on: push
 jobs:
   ship-preview:
     runs-on: ubuntu-latest

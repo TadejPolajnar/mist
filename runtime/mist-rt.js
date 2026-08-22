@@ -103,7 +103,7 @@ function flush(page) {
   if (!pending) return;
   const undoPaths = [];
   for (const path in pending) {
-    undoPaths.push([path, applyPathCapture(page.data, path, pending[path])]);
+    undoPaths.push(applyPathCapture(page.data, path, pending[path]));
   }
   page.__undo = [];
   Object.assign(pending, page.__derive());
@@ -122,7 +122,7 @@ function flush(page) {
       else delete page.__prev[u[0]];
     }
     for (let i = undoPaths.length - 1; i >= 0; i--) {
-      unapplyPath(page.data, undoPaths[i][0], undoPaths[i][1]);
+      unapplySegs(page.data, undoPaths[i][0], undoPaths[i][1]);
     }
     page.__dirty = null;
     page.__dirtyAll = true;
@@ -182,8 +182,7 @@ function parsePath(path) {
   return segs;
 }
 
-function unapplyPath(obj, path, value) {
-  const segs = parsePath(path);
+function unapplySegs(obj, segs, value) {
   let cur = obj;
   for (let i = 0; i < segs.length - 1; i++) {
     if (cur == null) return;
@@ -207,13 +206,23 @@ function applyPathCapture(obj, path, value) {
   let cur = obj;
   for (let i = 0; i < segs.length - 1; i++) {
     const s = segs[i];
-    if (cur[s] == null) cur[s] = typeof segs[i + 1] === 'number' ? [] : {};
+    if (cur[s] == null) {
+      const prior = cur[s];
+      cur[s] = typeof segs[i + 1] === 'number' ? [] : {};
+      let deep = cur[s];
+      for (let j = i + 1; j < segs.length - 1; j++) {
+        deep[segs[j]] = typeof segs[j + 1] === 'number' ? [] : {};
+        deep = deep[segs[j]];
+      }
+      deep[segs[segs.length - 1]] = value;
+      return [segs.slice(0, i + 1), prior];
+    }
     cur = cur[s];
   }
   const last = segs[segs.length - 1];
   const prior = cur[last];
   cur[last] = value;
-  return prior;
+  return [segs, prior];
 }
 
 // walk/create and assign on the local data mirror

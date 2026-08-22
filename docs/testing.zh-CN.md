@@ -137,6 +137,7 @@ mistc test --update        # 接受当前输出为新的基准
 流水线（参见 [api.zh-CN.md](api.zh-CN.md)）：
 
 ```yaml
+on: push
 jobs:
   ship-preview:
     runs-on: ubuntu-latest

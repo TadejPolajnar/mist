@@ -82,7 +82,7 @@ mistc upload [dir] [--preview] --key <path> [--version <ver>] [--desc <text>] [-
   传入密钥内容。上传还需要在后台把 CI 机器的 IP 加入白名单，或关闭 IP
   白名单。
 - **`--watch`** → 每次保存 `.mist`/`.ts` 即重编译（带防抖）。
-- **`test`** → 把 `<dir>/src` 编译到临时目录，并在 Node 测试环境中运行每个 `<dir>/tests/*.test.js`（`bootPage`、`flush`、`setData` payload 记录器、`wx` 桩）。见 [testing.zh-CN.md](testing.zh-CN.md)。需要 Node；任何文件失败则以非零退出码结束。
+- **`test`** → 把 `<dir>/src` 编译到临时目录，并在 Node 测试环境中运行每个 `<dir>/tests/*.test.js`（`bootPage`、`bootComponent`、`flush`、`setData` payload 记录器、`wx` 桩）。见 [testing.zh-CN.md](testing.zh-CN.md)。需要 Node；任何文件失败则以非零退出码结束。
 
 - **目录** → 项目构建。需要 `<dir>/app.mist` 和 `<dir>/pages/*.mist`（index 是启动页）。组件和 store 通过导入发现。输出使用微信目录布局。
 - **单文件** → 平铺构建一个页面及其导入；`--app` 附带一个最小可打开的应用壳（`App({})`、`app.json`、游客 appid 配置）。
@@ -114,7 +114,7 @@ dist/
 - `set(page, path, value)` / `touch(page)` / `flush(page)` —— 批量合并一次写入 / 一次仅重算派生值的遍历 / 每微任务一次的刷写（flush），只发出一次 `setData`。
   超过约 900KB 预算的多键批次会按原顺序拆分为连续多次 `setData`（`setDataBudget(bytes)` 可调），不再直接失败；含有任何单个超预算键的批次整体发送，保证拒绝仍是全有或全无（体积按 UTF-8 字节精确计算，因此分块不会在序列中途因体积被拒；序列中途出现非体积类微信错误时，先前的分块仍已生效——回滚会恢复逻辑侧状态，下一次 flush 重新收敛）。被拒绝的 `setData`（例如单个值就超过微信 1MB 限制）会把页面的本地镜像回滚，随后绑定了 store 的页面会从当前 store 值重新播种镜像——失败的批次绝不会让页面与其 store 失去同步。
 - `trace(on = true)` —— 把每次 `setData` 以 `[mist] <字节数>B <键列表>` 的格式打印到控制台。开发期可在任意页面的
-  frontmatter 里写一句 `rt.trace(true)` 来启用（该语句会原样透传到生成的 JS 中）；上线前请移除。
+  frontmatter 里写一句 `rt.trace(true)` 来启用（该语句会原样透传到生成的 JS 中）。该开关是进程级的——任一页面开启后，所有页面都会输出日志；上线前请移除。
 - `init(page)` —— 首次渲染的派生值播种（由生成的 `onLoad`/`attached` 调用）。
 - `applyPath(obj, path, value)` —— 批处理器使用的路径字符串写入器。
 - `derive(page, out, name, key, compute, deps)` —— 重算一个派生值，对快照做键控字段级 diff；`deps` 驱动按派生值粒度的脏位跳过（null ⇒ 总是重算）。

@@ -856,6 +856,28 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
         }
     }
 
+    let custom_tab_bar_path = src.join("custom-tab-bar.mist");
+    let custom_tab_bar_exists = custom_tab_bar_path.is_file();
+    if custom_tab_bar_exists {
+        if let Err(e) = compile_rec_at(
+            &custom_tab_bar_path,
+            UnitKind::Component,
+            CUSTOM_TAB_BAR_DEPTH,
+            None,
+            Some("custom-tab-bar/index"),
+            None,
+            &mut ctx,
+        ) {
+            unit_errors.push(e);
+        }
+    }
+
+    let mut dedup = std::collections::HashSet::new();
+    unit_errors.retain(|e| dedup.insert(e.clone()));
+    if !unit_errors.is_empty() {
+        return Err(unit_errors.join("\n\n"));
+    }
+
     let npm_usage = std::mem::take(&mut ctx.npm_usage);
     if !npm_usage.is_empty() {
         let parent = src.parent().unwrap_or(src);
@@ -907,28 +929,6 @@ pub fn compile_project_dir(src: &Path) -> Result<Project, String> {
                 route_param: None,
             });
         }
-    }
-
-    let custom_tab_bar_path = src.join("custom-tab-bar.mist");
-    let custom_tab_bar_exists = custom_tab_bar_path.is_file();
-    if custom_tab_bar_exists {
-        if let Err(e) = compile_rec_at(
-            &custom_tab_bar_path,
-            UnitKind::Component,
-            CUSTOM_TAB_BAR_DEPTH,
-            None,
-            Some("custom-tab-bar/index"),
-            None,
-            &mut ctx,
-        ) {
-            unit_errors.push(e);
-        }
-    }
-
-    let mut dedup = std::collections::HashSet::new();
-    unit_errors.retain(|e| dedup.insert(e.clone()));
-    if !unit_errors.is_empty() {
-        return Err(unit_errors.join("\n\n"));
     }
 
     let app = compile_app(&app_source, &mut ctx, custom_tab_bar_exists)?;
@@ -1059,6 +1059,7 @@ fn new_project_ctx(layout: Layout) -> ProjectCtx {
         min_lib: None,
         size_budget: None,
         store_info_memo: std::cell::RefCell::new(std::collections::HashMap::new()),
+        store_errors: std::cell::RefCell::new(std::collections::HashMap::new()),
         inlinable_memo: std::cell::RefCell::new(std::collections::HashMap::new()),
         seen: Vec::new(),
         files: Vec::new(),
@@ -1366,6 +1367,8 @@ struct ProjectCtx {
     size_budget: Option<u64>,
     /// canonical store path → module info, analyzed once per project
     store_info_memo: std::cell::RefCell<std::collections::HashMap<PathBuf, Option<frontmatter::StoreModuleInfo>>>,
+    /// import path → the store module's own compile error
+    store_errors: std::cell::RefCell<std::collections::HashMap<String, String>>,
     /// canonical component path → is_inlinable verdict
     inlinable_memo: std::cell::RefCell<std::collections::HashMap<PathBuf, bool>>,
     seen: Vec<PathBuf>,
@@ -1457,15 +1460,25 @@ fn compile_rec_at(
     // decide which imports can be inlined before compiling this unit
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let store_memo = &ctx.store_info_memo;
+    let store_errors = &ctx.store_errors;
     let resolver = |import_path: &str| -> Option<frontmatter::StoreModuleInfo> {
         let store_path = dir.join(import_path);
-        let key = store_path.canonicalize().unwrap_or(store_path);
+        let key = store_path.canonicalize().unwrap_or_else(|_| store_path.clone());
         if let Some(hit) = store_memo.borrow().get(&key) {
             return hit.clone();
         }
-        let info = std::fs::read_to_string(&key)
-            .ok()
-            .and_then(|src| frontmatter::store_module_info(&src).ok());
+        let info = match std::fs::read_to_string(&key) {
+            Ok(src) => match frontmatter::store_module_info(&src) {
+                Ok(info) => Some(info),
+                Err(e) => {
+                    store_errors
+                        .borrow_mut()
+                        .insert(import_path.to_string(), format!("{}: {}", store_path.display(), e));
+                    None
+                }
+            },
+            Err(_) => None,
+        };
         store_memo.borrow_mut().insert(key, info.clone());
         info
     };
@@ -1500,7 +1513,15 @@ fn compile_rec_at(
         floor.as_deref(),
         &resolver,
     )
-    .map_err(|e| format!("{}: {}", path.display(), e))?;
+    .map_err(|e| {
+        let errs = ctx.store_errors.borrow();
+        for (imp, store_err) in errs.iter() {
+            if e.contains(&format!("'{}'", imp)) {
+                return store_err.clone();
+            }
+        }
+        format!("{}: {}", path.display(), e)
+    })?;
     for c in &unit.classes {
         ctx.class_sources.entry(c.clone()).or_insert_with(|| path.display().to_string());
     }

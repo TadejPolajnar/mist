@@ -108,7 +108,7 @@ mistc upload [dir] [--preview] --key <path> [--version <ver>] [--desc <text>] [-
   小程序代码上传); never pass key contents directly. Uploads also need the
   CI machine's IP allowlisted there, or the IP allowlist disabled.
 - **`test`** → compiles `<dir>/src` to a temp dir and runs each
-  `<dir>/tests/*.test.js` in a Node harness (`bootPage`, `flush`, `setData`
+  `<dir>/tests/*.test.js` in a Node harness (`bootPage`, `bootComponent`, `flush`, `setData`
   payload recorder, `wx` stub). See [testing.md](testing.md). Requires Node;
   exits non-zero on any failing file.
 
@@ -162,7 +162,8 @@ You never import this — generated code does. For debugging, its surface:
 - `trace(on = true)` — log every `setData` to the console as
   `[mist] <bytes>B <keys>`. Enable during development with a plain
   `rt.trace(true)` statement in any page's frontmatter (it passes through
-  to the emitted JS); remove it before release.
+  to the emitted JS). The flag is process-wide — once any page enables it,
+  every page in the session logs. Remove it before release.
 - `init(page)` — first-render derive seed (called from generated `onLoad`/`attached`).
 - `applyPath(obj, path, value)` — path-string writer used by the batcher.
 - `derive(page, out, name, key, compute, deps)` — recompute one derived with

@@ -44,7 +44,7 @@ cd my-app
 mistc build src --watch      # 保存即重编译 · 在微信开发者工具中导入 my-app/
 ```
 
-编写 `.mist` 单文件组件（TypeScript frontmatter + 类 JSX 模板 + Tailwind），得到普通的 `Page()`/`Component()` 小程序代码，核心是**路径精确的 `setData`**：编译器静态追踪每一次状态变更，并生成它所改变的精确数据路径。没有虚拟 DOM，没有运行时树 diff，运行时仅约 9 KB（gzip 后 2.9 KB）。
+编写 `.mist` 单文件组件（TypeScript frontmatter + 类 JSX 模板 + Tailwind），得到普通的 `Page()`/`Component()` 小程序代码，核心是**路径精确的 `setData`**：编译器静态追踪每一次状态变更，并生成它所改变的精确数据路径。没有虚拟 DOM，没有运行时树 diff，运行时仅约 10 KB（gzip 后 2.9 KB）。
 
 ```
 ┌──────────────┐     mistc (Rust)      ┌──────────────────────────────┐
@@ -212,7 +212,7 @@ src/
 4. **`tailwind_cli`** 运行真实 Tailwind 并把现代 CSS 重写为 WXSS
 5. **`lib`** 编排项目图（组件、内联决策、store、目录布局），**`main`** 写出微信目录树
 
-生成的 JS 刻意保持可读（微信开发者工具无法加载外部 source map）：普通的 `Page({...})` 对象、保留你的命名，外加 `require('mist-rt.js')`——约 9 KB 的运行时，负责批量合并、带键 diff、store 订阅，以及 setData 被拒绝时的状态回滚。
+生成的 JS 刻意保持可读（微信开发者工具无法加载外部 source map）：普通的 `Page({...})` 对象、保留你的命名，外加 `require('mist-rt.js')`——约 10 KB 的运行时，负责批量合并、带键 diff、store 订阅，以及 setData 被拒绝时的状态回滚。
 
 ## 当前状态
 

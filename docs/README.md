@@ -13,7 +13,7 @@ disagree, these docs are right.
 - **[Getting started](#getting-started)** (below)
 - **[Language guide](language.md)** — file anatomy, reactivity, templates, components, stores, styling
 - **[API reference](api.md)** — everything importable from `'mist'`, the CLI, emitted output
-- **[Testing](testing.md)** — `mistc test`: boot compiled pages in Node, assert on state and `setData` payload sizes; `--snapshots` pins emitted output
+- **[Testing](testing.md)** — `mistc test`: boot compiled pages and components in Node, assert on state and `setData` payload sizes; `--snapshots` pins emitted output
 - **[i18n](i18n.md)** — the locale-store pattern: runtime language switching with zero compiler magic
 - **[Diagnostics](diagnostics.md)** — every `M`-code, with fixes
 

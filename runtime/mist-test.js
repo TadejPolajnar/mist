@@ -1,5 +1,6 @@
 'use strict';
 const path = require('path');
+const fs = require('fs');
 
 const dist = process.env.MIST_DIST;
 const testFile = process.argv[2];
@@ -107,6 +108,9 @@ function instrument(target, options) {
 
 function bootPage(name, options = {}) {
   const file = distFile(name);
+  if (!fs.existsSync(file) && fs.existsSync(componentFile(name))) {
+    throw new Error(`${name} is a component — use bootComponent('${name}')`);
+  }
   capturedPage = null;
   globalThis.__component = null;
   delete require.cache[require.resolve(file)];
@@ -132,6 +136,9 @@ function bootPage(name, options = {}) {
 
 function bootComponent(name, options = {}) {
   const file = componentFile(name);
+  if (!fs.existsSync(file) && fs.existsSync(distFile(name))) {
+    throw new Error(`${name} is a page — use bootPage('${name}')`);
+  }
   let registered = null;
   capturedPage = null;
   globalThis.__component = null;

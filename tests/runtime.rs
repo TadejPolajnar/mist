@@ -730,3 +730,26 @@ setTimeout(() => {
     );
     assert_eq!(out, "OK");
 }
+
+#[test]
+fn rollback_restores_null_rooted_vivified_paths() {
+    let out = run_node(
+        r#"
+const page = {
+  data: { obj: null, big: 'x' },
+  setData(o) { if ('big' in o) throw new Error('reject'); },
+  __derive() { return {}; },
+  __set(p, v) { rt.set(this, p, v); },
+};
+rt.init(page);
+page.__set('obj.field', 1);
+page.__set('big', 'y'.repeat(10));
+setTimeout(() => {
+  if (page.data.obj !== null) throw new Error('vivified root not restored: ' + JSON.stringify(page.data.obj));
+  if (page.data.big !== 'x') throw new Error('leaf not rolled back: ' + page.data.big);
+  console.log('OK');
+}, 20);
+"#,
+    );
+    assert_eq!(out, "OK");
+}

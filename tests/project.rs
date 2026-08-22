@@ -1547,3 +1547,53 @@ fn broken_shared_component_errors_once() {
     assert_eq!(err.matches("M1007").count(), 1, "err: {}", err);
     assert!(err.contains("Item.mist"), "err: {}", err);
 }
+
+#[test]
+fn unit_errors_report_even_when_npm_bundling_would_fail() {
+    let dir = std::env::temp_dir().join("mist-multi-error-npm");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::write(
+        dir.join("pages/broken.mist"),
+        "---\nimport { state } from 'mist'\nconst count = state(0)\nfunction inc() {\n  count++\n}\n---\n<span>{count.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { state } from 'mist'\nimport missingpkg from 'missingpkg'\nconst n = state('')\nfunction f() { n.value = missingpkg('x') }\n---\n<span onTap={f}>{n.value}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("M1007"), "unit error swallowed: {}", err);
+}
+
+#[test]
+fn broken_store_module_reports_its_own_error() {
+    let dir = std::env::temp_dir().join("mist-store-own-error");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("pages")).unwrap();
+    std::fs::create_dir_all(dir.join("stores")).unwrap();
+    std::fs::write(
+        dir.join("stores/cart.ts"),
+        "import { store } from 'mist'\nexport const cart = store({ items: [] })\nexport function add(x) { cart.items.push(x) }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("pages/index.mist"),
+        "---\nimport { cart } from '../stores/cart.ts'\n---\n<span>{cart.value.items.length}</span>\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("app.mist"),
+        "---\nimport { onLaunch } from 'mist'\nonLaunch(() => {})\n---\n",
+    )
+    .unwrap();
+    let err = mistc::compile_project_dir(&dir).unwrap_err();
+    assert!(err.contains("stores/cart.ts"), "err: {}", err);
+    assert!(!err.contains("require a project build"), "misleading message survived: {}", err);
+}
